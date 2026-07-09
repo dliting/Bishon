@@ -1,0 +1,31 @@
+# MkDocs configuration — placeholder for v2.1 documentation site.
+# Not enabled in v2.0; GitHub Pages deployment is planned for v2.1.
+
+site_name: Bishon V2
+site_description: Local-first knowledge base QA system
+site_url: https://dliting.github.io/Bishon/
+repo_url: https://github.com/dliting/Bishon
+repo_name: dliting/Bishon
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: readthedocs
+  highlightjs: true
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - API: API.md
+  - Design:
+      - Testing: design/testing-design.md
+      - Document traceability: design/document-traceability-design.md
+  - UI test steps: ui-test-steps.md
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true

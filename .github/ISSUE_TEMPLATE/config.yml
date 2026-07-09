@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/dliting/Bishon/security/advisories/new
+    about: Report security issues via GitHub Private Vulnerability Reporting (do NOT open a public issue).
+  - name: Discussions
+    url: https://github.com/dliting/Bishon/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.

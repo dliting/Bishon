@@ -1,0 +1,86 @@
+@mixin redBtn {
+  cursor: pointer;
+  &:hover {
+    background-color: $blue1-hover;
+  }
+  &:active {
+    background-color: $blue1-hover;
+  }
+}
+@mixin grid($size: 165px) {
+  display: grid;
+  justify-content: space-between;
+  grid-template-columns: repeat(auto-fill, $size);
+}
+/** Common flex helpers. **/
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+@mixin flex-center-column {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+@mixin flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+/** Width/height shortcuts. **/
+@mixin size($size) {
+  width: $size;
+  height: $size;
+}
+@mixin size-diff($w, $h) {
+  width: $w;
+  height: $h;
+}
+/** Background image. **/
+// @mixin background($url, $bwidth: 100%, $bheight: 100%) {
+//   background: url($url) center center no-repeat;
+//   background-size: $bwidth $bheight;
+// }
+/** CSS centering. **/
+@mixin css-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+/** absolute **/
+@mixin absolute($top: 0, $right: 0, $bottom: 0, $left: 0) {
+  position: absolute;
+  top: $top;
+  right: $right;
+  bottom: $bottom;
+  left: $left;
+}
+/** CSS single-line ellipsis. **/
+@mixin ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin input-focus {
+  border: 2px solid $other2;
+  background: #fff;
+  box-shadow: 0px 4px 12px rgba(58, 136, 255, 0.1);
+  caret-color: $other2;
+  border-right-width: 2px !important;
+}
+
+/* z-index convention */
+$zindex-under: 1; // below other content
+$zindex-over: 2; // above other content
+$zindex-affix: 200; // affix (pinned in page)
+$zindex-fixed: 400; // sticky header/footer
+$zindex-shadow-model: 500; // overlay layer
+$zindex-loading: 700; // loading (highest visible layer)

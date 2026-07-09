@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Runtime data
+BISHON_DB/
+logs/
+
+# Models (download separately)
+models/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend
+front_end/node_modules/
+front_end/dist/
+front_end/tmp_files/
+front_end/node_modules_old/
+bishon_kernel/bishon_server/dist/
+bishon_kernel/bishon_server/static/
+
+# Frontend env files (only .env.example is tracked)
+# Vite loads env files from front_end/, so the example lives there.
+front_end/.env
+front_end/.env.*
+front_end/src/.env
+front_end/src/.env.*
+!front_end/.env.example
+
+# Test artifacts
+.playwright-mcp/
+.deps_installed
+node_modules
+test/temp/
+test-results/
+
+# Temp files
+tmp_files/
+
+# Design source files (only the rendered PNG/SVG is needed in the repo)
+*.psd
+*.ai
+*.sketch
+*.fig
+
+# Backup files
+*.bak
+*.bak.*
+*_bak
+*_bak.*
+
+# IDE / Tool config (private)
+.claude/
+CLAUDE.md
+
+# Internal memo (kept private; backed up outside the repo)
+docs/migration-memo.md
+
+# Local archive (must never be inside the repo)
+_archive-local/
+
+# Local environment
+.env

@@ -1,0 +1,143 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bishon"
+version = "2.0.0"
+description = "Local-first knowledge base QA system: FAISS + SQLite + FastAPI + Vue 3"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Bishon Contributors" },
+]
+keywords = [
+    "rag",
+    "knowledge-base",
+    "faiss",
+    "fastapi",
+    "vue3",
+    "local-first",
+    "paddleocr",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Runtime dependencies are declared in requirements.txt (kept for the
+# conda + pip install flow). pyproject.toml intentionally does NOT duplicate
+# them here so we have a single source of truth.
+
+[project.urls]
+Homepage = "https://github.com/dliting/Bishon"
+Repository = "https://github.com/dliting/Bishon"
+Issues = "https://github.com/dliting/Bishon/issues"
+Changelog = "https://github.com/dliting/Bishon/blob/main/CHANGELOG.md"
+
+# ---------------------------------------------------------------------------
+# Ruff: lint + format
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "bishon_kernel/bishon_server/dist",
+    "bishon_kernel/bishon_server/static",
+    "front_end",
+    "node_modules",
+    "BISHON_DB",
+    "logs",
+    "models",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]  # allow assert False in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# Black (kept for editor integrations that prefer it; ruff format is the
+# canonical formatter via pre-commit)
+# ---------------------------------------------------------------------------
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+# ---------------------------------------------------------------------------
+# Pytest (migrated from pytest.ini)
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--showlocals",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+
+[tool.coverage.run]
+source = ["bishon_kernel"]
+omit = [
+    "tests/*",
+    "bishon_kernel/bishon_server/dist/*",
+    "bishon_kernel/bishon_server/static/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+fail_under = 90
+
+# ---------------------------------------------------------------------------
+# poe (poethepoet) — cross-platform task runner
+# Install with: pip install poethepoet
+# ---------------------------------------------------------------------------
+
+[tool.poe.tasks]
+install = "pip install -r requirements.txt -r requirements-dev.txt"
+dev = "python bishon_kernel/bishon_server/app.py"
+build-frontend = { shell = "cd front_end && npm ci && npm run build" }
+test-backend = "pytest tests/backend/unit -v"
+test-frontend = { shell = "cd front_end && npx vitest run" }
+test-e2e = { shell = "cd tests/frontend/e2e && npx playwright test" }
+test-integration = "pytest tests/backend/integration -v"
+lint = "ruff check ."
+format = "ruff format ."

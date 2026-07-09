@@ -1,0 +1,14 @@
+Bishon V2
+Copyright (c) 2026 The Bishon V2 Authors
+
+This product is licensed under the MIT License; see LICENSE for details.
+
+Architecture inspired by NetEase QAnything
+(https://github.com/netease-youdao/QAnything). All code in this repository
+has been rewritten from scratch.
+
+Initial maintainer:
+  - Bishon Dev
+
+Third-party dependencies retain their original licenses. See requirements.txt
+and front_end/package.json for the full dependency list.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- README: "Who is this for", "Sizing", "Scaling beyond" sections — target audience, sizing reference numbers, extension points for adapting the codebase to larger workloads.
+- README + NOTICE: softened QAnything attribution wording to acknowledge borrowed implementation details.
+
 ## [2.0.0] - 2026-07-07
 
 ### Added

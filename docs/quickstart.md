@@ -4,6 +4,15 @@
 > for the canonical quick-start guide. This page will be expanded in v2.1
 > when the MkDocs site goes live on GitHub Pages.
 
+## Who is this for
+
+Individuals and small-to-medium teams (up to ~50 people) who need a
+self-hosted knowledge base without standing up a microservice stack. Tested
+on a single workstation with up to ~50,000 documents / ~2M chunks. For
+enterprise / SaaS workloads or million-document corpora, consider NetEase
+QAnything, RAGFlow, or Dify instead. See the README *Scaling beyond* section
+for extension points.
+
 ## Prerequisites
 
 - Python 3.11+

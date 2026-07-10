@@ -28,6 +28,70 @@ English | [简体中文](README.zh-CN.md)
   file in your browser.
 - **SSE streaming chat** — answers stream token-by-token from the LLM.
 
+## Who is this for
+
+Bishon V2 is designed for **individuals and small-to-medium teams** who need a
+self-hosted, privacy-friendly knowledge base without standing up a
+microservice stack:
+
+- **Individual researchers / engineers** — personal notes, papers, technical
+  docs, all searchable and citable from a single chat box.
+- **Small teams (3–10 people)** — shared project docs, meeting notes, internal
+  wikis. Each member runs their own Bishon instance against a shared LLM
+  endpoint, or one instance serves the team behind a reverse proxy.
+- **Medium teams (10–50 people)** — department-level knowledge base. Works on
+  a single beefy workstation; for higher concurrency see *Scaling beyond*
+  below.
+
+**Out of scope** by design (no built-in support today):
+
+- Multi-tenant SaaS with authentication / authorization.
+- High-concurrency (> 10 simultaneous Q&A streams) production traffic.
+- Million-document corpora (single-machine FAISS tops out well before that).
+
+For those workloads, consider NetEase QAnything, RAGFlow, or Dify — they fit
+the enterprise / SaaS end of the spectrum. Bishon V2 trades horizontal scale
+for installation simplicity.
+
+## Sizing (reference numbers)
+
+Tested configurations on a single workstation. Numbers assume Qwen3-Reranker
+disabled and CPU-only OCR (set `RERANK_ENABLED=false`, `OCR_USE_GPU=false`):
+
+| Workload | Documents | Total chunks | RAM | Disk | Notes |
+|----------|-----------|--------------|-----|------|-------|
+| Personal | 100–1,000 | < 50k | 8 GB | 20 GB | Default config; works on a laptop |
+| Small team | 1,000–10,000 | 50k–500k | 16 GB | 100 GB | Rerank on; CPU FAISS is fine |
+| Medium team | 10,000–50,000 | 500k–2M | 32 GB | 500 GB | Enable FAISS-GPU + Rerank GPU; expect slower ingestion |
+
+Hard limits in the current codebase:
+
+- Single file upload: **30 MB** (documented in the UI; not hard-enforced in code).
+- Single image upload: **5 MB** (same — UI documentation only).
+- Concurrent uploads: thread pool = 4 (`bishon_kernel/bishon_server/handler.py:_executor`).
+- Q&A concurrency: same thread pool; one streaming Q&A blocks one worker for its duration.
+- Per-user FAISS index lives in one file under `BISHON_DB/faiss/{user_id}.faiss` — rebuild required if `FAISS_EMBEDDING_DIM` changes.
+
+If you outgrow these limits, see *Scaling beyond* below.
+
+## Scaling beyond (extension points)
+
+The codebase is intentionally small and modular. To adapt it for larger or
+different workloads:
+
+| Goal | What to change |
+|------|----------------|
+| Pluggable vector store (Milvus / Qdrant / pgvector) | Implement the interface in `bishon_kernel/connector/database/faiss/faiss_client.py` (`FaissClient`) behind a new class. ~400 LOC. |
+| Pluggable metadata store (PostgreSQL / MySQL) | Replace `bishon_kernel/connector/database/sqlite/sqlite_client.py` (`KnowledgeBaseManager`). Keep the public method names so handlers don't change. |
+| Add a new LLM provider (Anthropic / Gemini / MiniMax) | Subclass `BaseAdapter` in `bishon_kernel/connector/llm/adapters/`. Implement `chat()` and register it in `LLM_PROVIDER` dispatch (`bishon_kernel/connector/llm/llm_for_openai_api.py`). |
+| Add a new document loader (audio / video / epub) | Add a loader under `bishon_kernel/utils/loader/` and wire it into the dispatch in `bishon_kernel/core/local_file.py`. |
+| Swap PaddleOCR for a cloud OCR API | Replace the OCR callable in `bishon_kernel/core/local_doc_qa.py:LocalDocQA._ocr_callable`. Same shape — takes image data, returns a list of text strings. |
+| Add authentication (API keys / OIDC) | Add a FastAPI dependency / middleware in `bishon_kernel/bishon_server/app.py`. The handlers read `user_id` from the request body; surface it from `request.state.user` once auth is in place. |
+| Horizontal scaling | The FAISS index is a file; either (a) shard by `user_id` across N replicas behind a load balancer, or (b) move to a shared vector store (see first row). SQLite WAL mode supports concurrent reads; for heavy writes, move metadata to PostgreSQL. |
+| Bigger uploads | No hard limit today; the 30 MB / 5 MB caps are UI-only. Add an explicit check in the FastAPI handler (`bishon_kernel/bishon_server/handler.py:upload_files`) and a matching validator in `front_end/src/components/FileUploadDialog.vue`. |
+
+A high-level architecture map and per-module notes live under `docs/design/`.
+
 ## Screenshots
 
 <!-- TODO: replace with real screenshots before publishing. -->
@@ -180,9 +244,9 @@ deployment that fits comfortably on a workstation:
 
 ## Acknowledgements
 
-Architecture inspired by [NetEase QAnything](https://github.com/netease-youdao/QAnything).
-All code in this repository has been rewritten from scratch. See `NOTICE` for
-details.
+Architecture and several implementation details inspired by
+[NetEase QAnything](https://github.com/netease-youdao/QAnything). See `NOTICE`
+for details.
 
 ## Trademark notice
 

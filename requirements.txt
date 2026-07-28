@@ -1,4 +1,4 @@
-# Bishon V2 — 无 Docker 依赖
+# Bishon V2 — 主进程不依赖 Docker；离线 Docker 部署见 docs/deployment.md
 
 # Web 框架
 fastapi>=0.110

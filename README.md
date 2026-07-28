@@ -235,12 +235,39 @@ deployment that fits comfortably on a workstation:
 
 ## Roadmap
 
-- **v2.0** (this release): bare-metal single-process deployment, MIT license,
+- **v2.0**: bare-metal single-process deployment, MIT license,
   bilingual docs, GitHub Actions CI.
-- **v2.1**: optional Docker / docker-compose deployment, MkDocs documentation
-  site on GitHub Pages.
+- **v2.1** (current): optional **offline Docker deployment** for CUDA GPU
+  hosts — see [Docker deployment](#docker-deployment-optional) below and
+  [`docs/deployment.md`](docs/deployment.md). MkDocs documentation site on
+  GitHub Pages still pending.
 - **v2.2**: multimodal ingestion (audio / video transcription), pluggable
-  storage backends.
+  storage backends, Ascend (CANN) image variant.
+
+## Docker deployment (optional)
+
+For hosts where a single `uvicorn` process is inconvenient (CUDA driver
+isolation, reproducible environment, ops hand-off), Bishon V2 ships an
+**offline** Docker deployment. The image and a release tarball are produced
+on a developer WSL machine and copied to the deploy host — no network needed
+on the deploy side.
+
+```bash
+# Developer side (WSL Ubuntu 22.04, bishon conda env present)
+bash scripts/docker/bishon-build.sh   --version 2.1.0
+bash scripts/docker/make-release.sh   --version 2.1.0
+
+# Deploy side (any Linux host with Docker + NVIDIA Container Toolkit)
+bash scripts/docker/bishon-install.sh \
+    --host-dir /var/lib/bishon \
+    --release bishon-release-2.1.0.tar.gz \
+    --image   bishon-cuda-image-2.1.0.tar
+# edit /var/lib/bishon/.env, then:
+bash /var/lib/bishon/scripts/bishon-start.sh --host-dir /var/lib/bishon
+```
+
+Full instructions (env slimming, host-dir filesystem constraints, upgrade
+flow, uninstall, pitfall map): see [`docs/deployment.md`](docs/deployment.md).
 
 ## Acknowledgements
 

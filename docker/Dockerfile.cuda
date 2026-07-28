@@ -1,0 +1,68 @@
+# Bishon V2 — CUDA GPU runtime image.
+#
+# Design notes:
+#   - miniconda3 base lives in the image (tied to container glibc).
+#   - The bishon conda env is NOT baked in; it ships in the release tarball
+#     and is bind-mounted at /opt/bishon-data/bishon-env. The entrypoint
+#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-data/bishon-env so
+#     baked-in absolute paths inside the env still resolve.
+#   - Timezone is Asia/Shanghai (avoids container UTC vs business local-time skew).
+#   - HEALTHCHECK uses the in-process /api/health endpoint.
+
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# System libs required by torch / paddlepaddle / paddleocr / opencv at runtime.
+# fonts-noto-cjk needed for OCR on Chinese text.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        fontconfig \
+        fonts-noto-cjk \
+        tzdata \
+        ca-certificates \
+        curl \
+        bash \
+        wget \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
+
+# miniconda3 base only — no envs (bishon env injected via volume + symlink).
+# Use Tsinghua mirror for faster downloads from China; falls back to official
+# URL via retries built into wget.
+ENV CONDA_DIR=/opt/miniconda3
+RUN MINICONDA_URLS="https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
+    && for url in $MINICONDA_URLS; do \
+        echo "trying $url" \
+        && wget -q --tries=3 --timeout=60 "$url" -O /tmp/miniconda.sh \
+        && break; \
+    done \
+    && [ -s /tmp/miniconda.sh ] \
+    && bash /tmp/miniconda.sh -b -p "$CONDA_DIR" \
+    && rm /tmp/miniconda.sh \
+    && "$CONDA_DIR/bin/conda" config --set show_channel_urls yes \
+    && "$CONDA_DIR/bin/conda" clean -afy \
+    && ln -s "$CONDA_DIR/etc/profile.d/conda.sh" /etc/profile.d/conda.sh
+
+COPY entrypoint.sh /entrypoint.sh
+# CRLF guard: if entrypoint.sh was edited on Windows it may have CR endings,
+# which would make the container fail with `/usr/bin/env: 'bash\r': No such file`.
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+
+EXPOSE 8777
+# start-period matches bishon-start.sh's 180s polling window. Cold start
+# loads torch/paddle/transformers/faiss + Rerank + OCR models; without this
+# buffer, Docker would mark the container unhealthy before it finishes booting.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD curl -fsS http://localhost:8777/api/health || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

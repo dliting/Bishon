@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# bishon-stop.sh — stop and remove the Bishon V2 container.
+#
+# Usage:
+#   bash bishon-stop.sh --host-dir <dir>
+#
+# Idempotent: no-op if no container exists. Image is preserved (use
+# bishon-uninstall.sh to remove the image).
+
+set -euo pipefail
+
+HOST_DIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --host-dir) HOST_DIR="$2"; shift 2 ;;
+        -h|--help) echo "usage: $0 --host-dir <dir>"; exit 0 ;;
+        *) echo "unknown arg: $1" >&2; exit 1 ;;
+    esac
+done
+[ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
+
+if docker ps -a --format '{{.Names}}' | grep -qx bishon; then
+    echo "[stop] removing container 'bishon'"
+    docker stop bishon >/dev/null 2>&1 || true
+    docker rm   bishon >/dev/null 2>&1 || true
+else
+    echo "[stop] no container named 'bishon' — nothing to do"
+fi

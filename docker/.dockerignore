@@ -1,0 +1,36 @@
+# Build context is docker/ — keep entries minimal because the only file
+# COPY'd from this context is entrypoint.sh. This file mainly guards
+# against accidental COPY . additions later.
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Local runtime state — never bake into image
+BISHON_DB/
+logs/
+tmp_files/
+.deps_installed
+
+# Build artifacts that should never be in the image
+dist/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docs (not needed at runtime)
+*.md
+docs/
+
+# Tests (not needed at runtime)
+tests/
+test-results/

@@ -94,10 +94,10 @@ class CSVLoader(BaseLoader):
                     if self.source_column is not None
                     else self.file_path
                 )
-            except KeyError:
+            except KeyError as err:
                 raise ValueError(
                     f"Source column '{self.source_column}' not found in CSV file."
-                )
+                ) from err
 
             line_contents = []
             for k, v in row.items():
@@ -119,8 +119,8 @@ class CSVLoader(BaseLoader):
             for col in self.metadata_columns:
                 try:
                     metadata[col] = row[col]
-                except KeyError:
-                    raise ValueError(f"Metadata column '{col}' not found in CSV file.")
+                except KeyError as err:
+                    raise ValueError(f"Metadata column '{col}' not found in CSV file.") from err
             doc = Document(page_content=content, metadata=metadata)
             docs.append(doc)
 

@@ -115,7 +115,7 @@ class TestScoreValidation:
         # Old approach: s.replace('.','',1).replace('-','',1).isdigit() -> 'nan'.replace('.','',1) -> 'nan' -> invalid [OK]
         # But float() conversion needs to handle this correctly.
         try:
-            val = float(s)
+            float(s)
             is_valid = True
         except ValueError:
             is_valid = False

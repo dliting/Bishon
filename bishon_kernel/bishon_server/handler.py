@@ -181,10 +181,10 @@ async def upload_weblink(request: Request):
 @router.post("/local_doc_qa/upload_files")
 async def upload_files(
     request: Request,
-    files: list[UploadFile] = File(...),
-    user_id: str = Form(...),
-    kb_id: str = Form(...),
-    mode: str = Form('soft'),
+    files: list[UploadFile] = File(...),  # noqa: B008 — FastAPI idiom for multipart defaults
+    user_id: str = Form(...),  # noqa: B008
+    kb_id: str = Form(...),  # noqa: B008
+    mode: str = Form('soft'),  # noqa: B008
     use_local_file: str = Form('false'),  # noqa: F841 — V1 API compat parameter
 ):
     local_doc_qa = _get_local_doc_qa(request)
@@ -225,7 +225,7 @@ async def upload_files(
 
     from bishon_kernel.configs.model_config import UPLOAD_ROOT_PATH
 
-    for file, file_name in zip(files, file_names):
+    for file, file_name in zip(files, file_names, strict=False):
         if file_name in exist_file_names:
             continue
         file_content = await file.read()

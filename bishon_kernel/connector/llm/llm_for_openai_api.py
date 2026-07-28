@@ -91,7 +91,7 @@ class OpenAILLM:
         for message in messages:
             if isinstance(message, dict):
                 num_tokens += 3  # tokens per message
-                for key, value in message.items():
+                for _key, value in message.items():
                     num_tokens += len(encoding.encode(value))
             elif isinstance(message, str):
                 num_tokens += len(encoding.encode(message))

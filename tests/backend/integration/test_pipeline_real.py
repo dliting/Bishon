@@ -201,6 +201,6 @@ class TestRealChatPipeline:
         assert chat_resp.status_code == 200
         assert "text/event-stream" in chat_resp.headers.get("content-type", "")
         text = chat_resp.text
-        lines = [l for l in text.split("\n") if l.startswith("data: ")]
+        lines = [line for line in text.split("\n") if line.startswith("data: ")]
         assert len(lines) >= 1
-        assert any("[DONE]" in l for l in lines)
+        assert any("[DONE]" in line for line in lines)

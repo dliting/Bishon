@@ -40,10 +40,10 @@ class MyRecursiveUrlLoader(BaseLoader):
 
         try:
             from bs4 import BeautifulSoup
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "The BeautifulSoup package is required for the RecursiveUrlLoader."
-            )
+            ) from err
 
         # Exclude the root and parent from a list
         visited = set() if visited is None else visited

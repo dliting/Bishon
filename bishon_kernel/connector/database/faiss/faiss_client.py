@@ -199,9 +199,9 @@ class FaissClient:
             chunk_meta_snapshot = dict(self._chunk_meta)
 
         batch_result = []
-        for query_scores, query_ids in zip(scores, ids):
+        for query_scores, query_ids in zip(scores, ids, strict=False):
             cands = []
-            for score, chunk_id in zip(query_scores, query_ids):
+            for score, chunk_id in zip(query_scores, query_ids, strict=False):
                 chunk_id_int = int(chunk_id)
                 meta = chunk_meta_snapshot.get(chunk_id_int)
                 if meta is None:

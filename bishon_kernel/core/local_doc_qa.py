@@ -200,7 +200,7 @@ class LocalDocQA:
         batch_result = faiss_kb.search_emb_async(embs=embs, top_k=top_k)
         t2 = time.time()
         debug_logger.info("faiss search time: %.2f", t2 - t1)
-        for query, query_docs in zip(queries, batch_result):
+        for query, query_docs in zip(queries, batch_result, strict=False):
             for doc in query_docs:
                 doc.metadata['retrieval_query'] = query
                 doc.metadata['embed_version'] = self.embeddings.embed_version

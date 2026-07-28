@@ -30,7 +30,7 @@ def write_check_file(filepath, docs):
     os.makedirs(folder_path, exist_ok=True)
     fp = os.path.join(folder_path, 'load_file.txt')
     with open(fp, 'a+', encoding='utf-8') as fout:
-        fout.write("filepath=%s,len=%d\n" % (filepath, len(docs)))
+        fout.write(f"filepath={filepath},len={len(docs)}\n")
         for i in docs:
             fout.write(str(i) + '\n')
 

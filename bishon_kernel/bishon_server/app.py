@@ -11,16 +11,16 @@ root_dir = os.path.dirname(parent_dir)
 sys.path.append(root_dir)
 
 # Windows DLL compat: torch must be imported before paddle, otherwise CUDA libs conflict
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager  # noqa: E402
 
-import torch  # noqa: F401
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+import torch  # noqa: F401, E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
-from bishon_kernel.bishon_server.handler import _UserIdError, router
-from bishon_kernel.core.local_doc_qa import LocalDocQA
+from bishon_kernel.bishon_server.handler import _UserIdError, router  # noqa: E402
+from bishon_kernel.core.local_doc_qa import LocalDocQA  # noqa: E402
 
 # Global instance
 local_doc_qa: LocalDocQA = None

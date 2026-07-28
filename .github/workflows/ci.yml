@@ -61,7 +61,10 @@ jobs:
 
       - name: Install dependencies
         working-directory: front_end
-        run: npm ci
+        # --legacy-peer-deps: pinia-plugin-persistedstate's pinia peer dep
+        # requires vue ^3.5.11, but this project pins vue at 3.3. Tracked
+        # for upgrade in v2.1.
+        run: npm ci --legacy-peer-deps
 
       - name: Run frontend unit tests
         working-directory: front_end

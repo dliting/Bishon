@@ -3,6 +3,7 @@
 本文档说明 Bishon V2 的 **离线 Docker 部署** 流程：开发机打包镜像 + 发布包，部署机无需联网即可安装运行。适用于 v2.1+。
 
 如需 bare-metal（裸进程）部署，参考根目录的 `README.md` 与 `start.sh`。
+开发环境搭建（WSL ext4 + 模型符号链接等）见 [`dev-environment.md`](./dev-environment.md)。
 
 ## 目录
 

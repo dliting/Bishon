@@ -43,6 +43,9 @@ IMAGE_TAG="bishon-cuda:$VERSION"
 log() { echo "[release] $*"; }
 die() { echo "[release] FATAL: $*" >&2; exit 1; }
 
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
 # --- 0. Pre-flight checks ----------------------------------------------------
 
 [ -d "$ENV_SRC" ] || \
@@ -141,15 +144,12 @@ RSYNC_EXCLUDES=(
 
 log "staging source from MANIFEST ($(wc -l < "$MANIFEST") lines)"
 shipped=0
-while IFS= read -r raw; do
-    # Skip full-line comments and blank lines.
-    [[ "$raw" =~ ^[[:space:]]*# ]] && continue
-    path="$(echo "$raw" | xargs)"   # trim surrounding whitespace
-    [ -z "$path" ] && continue
-
+# bishon_parse_manifest drops comments/blanks and trims whitespace; it
+# returns paths one per line via stdout. Piping through process substitution
+# keeps the surrounding `while` body able to mutate $shipped.
+while IFS= read -r path; do
     src="$REPO_ROOT/$path"
-    [ -e "$src" ] || \
-        die "MANIFEST references missing path: '$path' (from line: '$raw')"
+    [ -e "$src" ] || die "MANIFEST references missing path: '$path'"
 
     # Preserve the relative path under $DIST/bishon/. For top-level files
     # dirname=".", for nested paths the parent dir is created.
@@ -157,7 +157,7 @@ while IFS= read -r raw; do
     mkdir -p "$dest_parent"
     rsync -a "${RSYNC_EXCLUDES[@]}" "$src" "$dest_parent/"
     shipped=$((shipped + 1))
-done < "$MANIFEST"
+done < <(bishon_parse_manifest "$MANIFEST")
 [ "$shipped" -gt 0 ] || die "MANIFEST produced zero staged paths. Is the file empty?"
 
 # --- 4. Models (strip .git to slim) ------------------------------------------

@@ -39,6 +39,9 @@ done
 log() { echo "[install] $*"; }
 die() { echo "[install] FATAL: $*" >&2; exit 1; }
 
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
 [ -n "$HOST_DIR" ]    || { echo "usage: $0 --host-dir <dir> --release <t> --image <t>" >&2; exit 1; }
 [ -n "$RELEASE_TAR" ] || die "--release required"
 [ -n "$IMAGE_TAR" ]   || die "--image required"
@@ -52,22 +55,8 @@ log "target host-dir: $HOST_DIR"
 
 # --- 1. Filesystem sanity (避坑指南 #2: SQLite WAL on 9p/NTFS) ----------------
 mkdir -p "$HOST_DIR"
-case "$HOST_DIR" in
-    /mnt/*|/media/*|/run/media/*)
-        cat >&2 <<EOF
-[install] FATAL: $HOST_DIR looks like a removable / cross-OS mount.
-       WSL mounts Windows drives under /mnt/* (9p/drvfs); Linux auto-mounts
-       under /media/* or /run/media/* (often cifs/9p). SQLite WAL will fail
-       with I/O errors on these filesystems.
-       Use an ext4 path inside WSL, e.g. ~/bishon-data or /var/lib/bishon.
-EOF
-        exit 1 ;;
-esac
 fs_type="$(df -T "$HOST_DIR" | awk 'NR==2 {print $2}')"
-case "$fs_type" in
-    9p|drvfs|tmpfs|overlay|smbfs|cifs)
-        die "host-dir filesystem is '$fs_type' — not safe for SQLite WAL. Use ext4." ;;
-esac
+bishon_validate_host_dir_fs "$HOST_DIR" || exit 1
 log "filesystem OK ($fs_type)"
 
 # --- 2. Directory skeleton ---------------------------------------------------

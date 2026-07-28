@@ -35,10 +35,22 @@ cd ..
 
 echo ""
 echo "=== 4/5 Shell Script Tests ==="
-if bats tests/scripts/test_start_sh.sh; then
+SHELL_PASS=0
+SHELL_FAIL=0
+for bats_file in tests/scripts/*.bats; do
+  [ -f "$bats_file" ] || continue
+  if bats "$bats_file"; then
+    SHELL_PASS=$((SHELL_PASS + 1))
+  else
+    SHELL_FAIL=$((SHELL_FAIL + 1))
+  fi
+done
+if [ "$SHELL_FAIL" -eq 0 ]; then
   PASS=$((PASS + 1))
+  echo "All shell test files passed ($SHELL_PASS files)"
 else
   FAIL=$((FAIL + 1))
+  echo "Shell test failures: $SHELL_FAIL of $((SHELL_PASS + SHELL_FAIL)) files failed"
 fi
 
 echo ""

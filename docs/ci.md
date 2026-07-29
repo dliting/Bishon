@@ -34,19 +34,61 @@ sh 'bash scripts/ci/shell-checks.sh'
 
 ## bats 依赖的处理
 
-`shell-checks.sh` 要求 `bats` 在 PATH 上。CI 安装方式：
+`shell-checks.sh` 要求 `bats` 在 PATH 上。**不要在 YAML 里 inline 写 `apt install bats`**——这绑定 GitHub Actions 假设且在内网 CI 会失败。
 
-| 平台 | 安装命令 |
+### 推荐：`scripts/ci/install-bats.sh`
+
+封装好的多平台安装脚本，按顺序尝试：
+
+1. bats 已在 PATH → 跳过
+2. `apt-get install bats`（有 sudo 或 root）
+3. `brew install bats-core`（macOS）
+4. 从 GitHub 下载源码 tarball 装到 `~/.local`（最后兜底）
+
+CI YAML 只调一行：
+
+```yaml
+- run: bash scripts/ci/install-bats.sh
+- run: bash scripts/ci/shell-checks.sh
+```
+
+### 内网无外网：预装到 CI 基础镜像
+
+设 `BISHON_CI_BATS_PREINSTALLED=1` 环境变量。`install-bats.sh` 在该模式下：
+- 如果 bats 已在 PATH → 跳过（正常）
+- 如果 bats 不在 PATH → **大声失败**（防止 silent skip 让 CI 假绿）
+
+CI 基础镜像里预装的常见方式：
+
+| 基础镜像 | 预装命令 |
 |---|---|
-| GitHub Actions (ubuntu-latest) | `sudo apt-get update && sudo apt-get install -y bats` |
-| GitLab CI (Debian/Ubuntu runner) | `apt-get update && apt-get install -y bats` |
-| GitLab CI (Docker executor) | 预装到 base image |
-| Gitea Actions | 同 GitHub Actions |
-| Jenkins | 取决于 agent 类型 |
-| macOS runner | `brew install bats-core` |
-| 内网无外网 | **预装到 CI 基础镜像**（强烈推荐） |
+| Debian/Ubuntu | `apt-get install -y bats` |
+| Alpine | `apk add --no-cache bats` |
+| CentOS/RHEL | `yum install -y bats` (EPEL) 或从源码 |
+| 自研镜像 | Dockerfile 里 `RUN <install>` |
 
-> 内网部署尤其推荐"预装到基础镜像"——避免 CI 流水线在线 apt 安装受外网/镜像源影响。
+### 完整调用示例（GitHub Actions）
+
+```yaml
+shell:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - run: bash scripts/ci/install-bats.sh
+    - run: bash scripts/ci/shell-checks.sh
+```
+
+### 完整调用示例（内网 GitLab CI，预装 bats）
+
+```yaml
+# .gitlab-ci.yml
+shell:
+  image: internal-registry/bishon-ci-runner:latest  # 已预装 bats
+  variables:
+    BISHON_CI_BATS_PREINSTALLED: "1"
+  script:
+    - bash scripts/ci/shell-checks.sh
+```
 
 ## 本地开发
 

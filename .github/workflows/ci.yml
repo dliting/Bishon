@@ -77,17 +77,15 @@ jobs:
   shell:
     # Bash scripts under docker/, scripts/docker/, and tests/scripts/.
     # All shell-side logic lives in scripts/ci/shell-checks.sh — this job
-    # only installs bats and calls the script. Migrating to GitLab CI /
-    # Gitea Actions / Jenkins is a 1-line change (see docs/ci_design.md).
+    # just calls the script. bats is auto-resolved (system bats if present,
+    # otherwise the vendored third_party/bats-core/). Migrating to GitLab
+    # CI / Gitea Actions / Jenkins is a 1-line change (see docs/ci.md).
     name: Shell (bats)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install bats
-        run: sudo apt-get update && sudo apt-get install -y bats
 
       - name: Shell checks
         run: bash scripts/ci/shell-checks.sh

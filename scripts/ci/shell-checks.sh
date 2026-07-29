@@ -41,6 +41,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# --- Locate bats: prefer system bats, fall back to vendored copy -----------
+# third_party/bats-core/bin/bats is committed to the repo (MIT-licensed) so
+# the shell checks work on any CI runner with bash 4+, even without internet
+# access or apt mirror. See third_party/bats-core/README.md for upgrade.
+if ! command -v bats >/dev/null 2>&1; then
+    VENDORED_BATS="$REPO_ROOT/third_party/bats-core/bin/bats"
+    if [ -x "$VENDORED_BATS" ]; then
+        # Prepend the vendored bin dir so bats' internal libexec lookups
+        # also resolve correctly.
+        export PATH="$REPO_ROOT/third_party/bats-core/bin:$PATH"
+        echo "[shell-checks] using vendored bats at $VENDORED_BATS"
+    fi
+fi
+
 fail=0
 
 # --- 1. bash -n syntax check on every .sh under docker/ and scripts/docker/ --
@@ -70,17 +84,14 @@ if command -v bats >/dev/null 2>&1; then
         fail=1
     fi
 elif $ALLOW_MISSING_BATS; then
-    echo "WARN: bats not on PATH; skipping bats tests (--local mode)."
+    echo "WARN: bats not on PATH and no vendored copy; skipping bats tests (--local mode)."
     echo "      Install: apt install bats | brew install bats-core |"
-    echo "      pre-bake into CI image."
+    echo "      or run scripts/ci/install-bats.sh."
 else
     cat >&2 <<EOF
-FATAL: bats not on PATH. CI mode requires it.
-   Install:
-     apt install bats          # Debian/Ubuntu
-     brew install bats-core    # macOS
-     pre-bake into CI image    # internal restricted networks
-   Or run with --local to skip bats tests.
+FATAL: bats not on PATH and vendored copy missing.
+   Expected at: third_party/bats-core/bin/bats
+   Either restore the vendored copy from git, or install bats system-wide.
 EOF
     fail=1
 fi

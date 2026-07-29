@@ -19,6 +19,7 @@ set -euo pipefail
 HOST_DIR=""
 RELEASE_TAR=""
 IMAGE_TAR=""
+MODELS_TAR=""
 ACCELERATOR="cuda"
 
 while [[ $# -gt 0 ]]; do
@@ -26,10 +27,20 @@ while [[ $# -gt 0 ]]; do
         --host-dir)    HOST_DIR="$2";    shift 2 ;;
         --release)     RELEASE_TAR="$2"; shift 2 ;;
         --image)       IMAGE_TAR="$2";   shift 2 ;;
+        --models)      MODELS_TAR="$2";  shift 2 ;;
         --accelerator) ACCELERATOR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --host-dir <dir> --release <tar.gz> --image <tar> [--accelerator cuda]
+Usage: $0 --host-dir <dir> --release <tar.gz> --image <tar>
+          [--models <tar.gz>] [--accelerator cuda]
+
+  --host-dir <dir>     Where state lives (must be ext4 / non-9p filesystem).
+  --release <tar.gz>   Main release tarball (source + env + scripts).
+  --image <tar>        Docker image from 'docker save'.
+  --models <tar.gz>    (Optional) Models tarball from make-release.sh. Skip
+                       to install without models (useful for upgrade when
+                       models are unchanged).
+  --accelerator <acc>  cuda (default) | ascend (future).
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -49,6 +60,7 @@ die() { bishon_die "$@"; }
 [ -n "$IMAGE_TAR" ]   || die "--image required"
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
 [ -f "$IMAGE_TAR" ]   || die "image tar not found: $IMAGE_TAR"
+[ -z "$MODELS_TAR" ] || [ -f "$MODELS_TAR" ] || die "models tar not found: $MODELS_TAR"
 command -v docker >/dev/null || die "docker not found on PATH"
 command -v curl >/dev/null   || die "curl not found on PATH (needed by start.sh health check)"
 
@@ -90,13 +102,30 @@ tar -xzf "$RELEASE_TAR" -C "$TMP"
     die "release tarball missing bishon/bishon_kernel"
 [ -f "$TMP/bishon/bishon_kernel/bishon_server/dist/bishon/index.html" ] || \
     die "release tarball missing bishon_kernel/bishon_server/dist/bishon/index.html"
-[ -d "$TMP/models" ] || \
-    die "release tarball missing models/"
 
-rm -rf "$HOST_DIR/bishon-env" "$HOST_DIR/bishon" "$HOST_DIR/models"
+rm -rf "$HOST_DIR/bishon-env" "$HOST_DIR/bishon"
 mv "$TMP/bishon-env" "$HOST_DIR/bishon-env"
 mv "$TMP/bishon"     "$HOST_DIR/bishon"
-mv "$TMP/models"     "$HOST_DIR/models"
+
+# --- Models: optional separate tarball or legacy inline path --------------------
+# --models takes priority; if omitted, check the main tarball for a models/ dir
+# (backward compat with older releases that shipped models inline). If neither
+# is present, install without models — the service runs fine w/o them (Rerank
+# can be disabled; OCR will warn at startup).
+rm -rf "$HOST_DIR/models"
+if [ -n "$MODELS_TAR" ]; then
+    log "extracting models from $MODELS_TAR"
+    tar -xzf "$MODELS_TAR" -C "$HOST_DIR"
+    [ -d "$HOST_DIR/models" ] || die "models tarball did not produce a models/ directory"
+elif [ -d "$TMP/models" ]; then
+    # Legacy: models bundled in the main tarball.
+    mv "$TMP/models" "$HOST_DIR/models"
+else
+    mkdir -p "$HOST_DIR/models"
+    log "no models tarball provided; models/ will be empty."
+    log "Install models tarball separately if needed with:"
+    log "  tar -xzf bishon-models-$VERSION.tar.gz -C $HOST_DIR"
+fi
 
 mkdir -p "$HOST_DIR/scripts"
 cp -a "$TMP/scripts/." "$HOST_DIR/scripts/"

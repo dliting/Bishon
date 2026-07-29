@@ -19,13 +19,27 @@ set -euo pipefail
 
 VERSION=""
 CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
+SRC_ONLY=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)    VERSION="$2";    shift 2 ;;
         --conda-root) CONDA_ROOT="$2"; shift 2 ;;
+        --src-only)   SRC_ONLY=true;   shift ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --version <ver> [--conda-root /opt/miniconda3]
+Usage: $0 --version <ver> [--conda-root /opt/miniconda3] [--src-only]
+
+  --version <ver>      Image and release tarball version, e.g. 2.1.0.
+  --conda-root <path>  Path to miniconda3 installation (def: /opt/miniconda3).
+  --src-only           Package source + scripts only; skip bishon-env, models,
+                       and the docker image tar. Fast (~5s) for quick publish
+                       testing when only code changed.
+
+Outputs (under dist/):
+  bishon-release-<ver>.tar.gz        source + env + models + scripts
+  bishon-models-<ver>.tar.gz         models only (for install/upgrade reuse)
+  bishon-cuda-image-<ver>.tar        docker save tarball
+  bishon-release-<ver>.tar.gz.sha256 checksum file
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -37,6 +51,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENV_SRC="$CONDA_ROOT/envs/bishon"
 DIST="$REPO_ROOT/dist/release-$VERSION"
 DIST_TGZ="$REPO_ROOT/dist/bishon-release-$VERSION.tar.gz"
+MODELS_TGZ="$REPO_ROOT/dist/bishon-models-$VERSION.tar.gz"
 IMAGE_TAR="$REPO_ROOT/dist/bishon-cuda-image-$VERSION.tar"
 IMAGE_TAG="bishon-cuda:$VERSION"
 
@@ -47,87 +62,33 @@ source "$(dirname "$0")/lib/common.sh"
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 
-# --- 0. Pre-flight checks ----------------------------------------------------
-
-[ -d "$ENV_SRC" ] || \
-    die "bishon conda env not found at $ENV_SRC. Create it in WSL first."
-
-# 0a. WSL Ubuntu version must match image base (glibc compat).
-WSL_UBUNTU_VER="$(. /etc/os-release 2>/dev/null && echo "${VERSION_ID:-unknown}" || echo unknown)"
-[ "$WSL_UBUNTU_VER" = "22.04" ] || {
-    cat >&2 <<EOF
-[release] FATAL: WSL Ubuntu is '${WSL_UBUNTU_VER}' but image base is 22.04.
-       The .so files baked into $ENV_SRC would fail to load against the
-       container's glibc. Aborting. Build the bishon env on Ubuntu 22.04.
-EOF
-    exit 1
-}
-
-# 0b. bishon env must import all critical deps (avoid shipping a broken env).
-"$ENV_SRC/bin/python" - <<'PY' || die "bishon env import check failed (see errors above)."
-import sys
-required = ("fastapi", "uvicorn", "torch", "faiss", "paddle", "transformers", "langchain")
-missing = []
-for mod in required:
-    try:
-        __import__(mod)
-    except Exception as e:
-        print(f"missing/broken: {mod} ({e})", file=sys.stderr)
-        missing.append(mod)
-if missing:
-    sys.exit(1)
-print("env import check OK")
-PY
-
-# 0c. Static assets must be present (runtime hard-dependency).
-[ -f "$REPO_ROOT/bishon_kernel/bishon_server/dist/bishon/index.html" ] || {
-    cat >&2 <<EOF
-[release] FATAL: bishon_kernel/bishon_server/dist/bishon/index.html missing.
-       Rebuild the frontend and copy output:
-         cd front_end && npm ci && npm run build
-         cp -r front_end/dist bishon_kernel/bishon_server/
-EOF
-    exit 1
-}
-
-# 0d. Models must contain the OCR weights (Rerank is optional; RERANK_ENABLED
-# defaults to false). An empty models/ would silently produce a release that
-# crashes on first OCR call.
-paddle_dir="$REPO_ROOT/models/paddleocr_models"
-[ -d "$paddle_dir" ] || die "$paddle_dir missing."
-paddle_subdirs="$(find "$paddle_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
-[ "$paddle_subdirs" -ge 4 ] || \
-    die "$paddle_dir has $paddle_subdirs subdirs; expected >=4 (det/rec/cls/doc_ori). Download paddleocr_models first."
-
-# 0d. Image must already exist (we will docker save it).
-docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || \
-    die "Image $IMAGE_TAG not found. Run: bishon-build.sh --version $VERSION"
+# --- 0. Pre-flight checks (delegates to scripts/docker/preflight.sh) ---------
+PREFLIGHT_ARGS=(--version "$VERSION")
+$SRC_ONLY && PREFLIGHT_ARGS+=(--src-only)
+bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
+    die "preflight failed. Fix the issues above before running make-release.sh."
 
 # --- 1. Stage directory ------------------------------------------------------
 
 log "staging at $DIST"
 rm -rf "$DIST"
 mkdir -p "$DIST"
+mkdir -p "$REPO_ROOT/dist"
 
-# --- 2. bishon-env (one env, slim) -------------------------------------------
-# NOTE: do NOT --exclude 'pip' — it would also drop bin/pip and
-# site-packages/pip, breaking in-container pip. The pip *cache* lives outside
-# the env (under ~/.cache/pip) and is cleaned separately.
-log "copying bishon-env (~$(du -sh "$ENV_SRC" | cut -f1))"
-rsync -a \
-    --exclude '__pycache__' \
-    --exclude '*.pyc' \
-    --exclude '*.pyo' \
-    "$ENV_SRC/" "$DIST/bishon-env/"
+# --- 2. bishon-env (one env, slim) — skipped in --src-only ------------------
+if $SRC_ONLY; then
+    log "--src-only: skipping bishon-env"
+    mkdir -p "$DIST/bishon-env"  # empty placeholder so tarball has the dir
+else
+    log "copying bishon-env (~$(du -sh "$ENV_SRC" | cut -f1))"
+    rsync -a \
+        --exclude '__pycache__' \
+        --exclude '*.pyc' \
+        --exclude '*.pyo' \
+        "$ENV_SRC/" "$DIST/bishon-env/"
+fi
 
 # --- 3. Source code (MANIFEST-driven) ----------------------------------------
-# The list of paths that ship lives in release/MANIFEST (explicit opt-in).
-# These excludes apply to every manifest entry — they cover build artifacts
-# and caches that never belong in a release tarball.
-#
-# Note: do NOT use --exclude 'dist' — it would also drop
-# bishon_kernel/bishon_server/dist/bishon/ (the runtime-mounted frontend
-# assets). The step 0c check above guarantees that directory is populated.
 MANIFEST="$REPO_ROOT/release/MANIFEST"
 [ -f "$MANIFEST" ] || \
     die "release/MANIFEST not found at $MANIFEST. Required to assemble release."
@@ -145,15 +106,9 @@ RSYNC_EXCLUDES=(
 
 log "staging source from MANIFEST ($(wc -l < "$MANIFEST") lines)"
 shipped=0
-# bishon_parse_manifest drops comments/blanks and trims whitespace; it
-# returns paths one per line via stdout. Piping through process substitution
-# keeps the surrounding `while` body able to mutate $shipped.
 while IFS= read -r path; do
     src="$REPO_ROOT/$path"
     [ -e "$src" ] || die "MANIFEST references missing path: '$path'"
-
-    # Preserve the relative path under $DIST/bishon/. For top-level files
-    # dirname=".", for nested paths the parent dir is created.
     dest_parent="$DIST/bishon/$(dirname "$path")"
     mkdir -p "$dest_parent"
     rsync -a "${RSYNC_EXCLUDES[@]}" "$src" "$dest_parent/"
@@ -161,31 +116,47 @@ while IFS= read -r path; do
 done < <(bishon_parse_manifest "$MANIFEST")
 [ "$shipped" -gt 0 ] || die "MANIFEST produced zero staged paths. Is the file empty?"
 
-# --- 4. Models (strip .git to slim) ------------------------------------------
-log "copying models (~$(du -sh "$REPO_ROOT/models" 2>/dev/null | cut -f1 || echo '?'))"
-rsync -a --exclude '.git' "$REPO_ROOT/models/" "$DIST/models/"
+# --- 4. Models — separate tarball (not in main release) ----------------------
+# Models (~2.5 GB) change infrequently; shipping them in the main tarball
+# forces every deploy to download them. Instead, produce a standalone
+# models tarball that install.sh --models can optionally consume.
+if $SRC_ONLY; then
+    log "--src-only: skipping models"
+else
+    log "copying models (~$(du -sh "$REPO_ROOT/models" 2>/dev/null | cut -f1 || echo '?'))"
+    mkdir -p "$DIST/models"
+    rsync -a --exclude '.git' "$REPO_ROOT/models/" "$DIST/models/"
+    log "creating $MODELS_TGZ"
+    tar -czf "$MODELS_TGZ" -C "$DIST" models
+    (cd "$(dirname "$MODELS_TGZ")" && sha256sum "$(basename "$MODELS_TGZ")" > "$(basename "$MODELS_TGZ").sha256")
+fi
 
-# --- 5. Top-level convenience copies for install.sh --------------------------
-# install.sh extracts the tarball then reads scripts/ and .env.example from
-# the top level of the tarball (not from inside bishon/) so the operator
-# doesn't need to cd anywhere to start install. Keep them in sync with the
-# canonical copies under bishon/.
+# --- 5. Top-level convenience copies for install.sh -------------------------
 mkdir -p "$DIST/scripts"
 cp -a "$REPO_ROOT/scripts/docker/." "$DIST/scripts/"
 cp "$REPO_ROOT/.env.example" "$DIST/"
 
-# --- 6. Tarball --------------------------------------------------------------
+# --- 6. Main tarball ---------------------------------------------------------
 log "creating $DIST_TGZ (~this step is slow due to gzip)"
-mkdir -p "$REPO_ROOT/dist"
 tar -czf "$DIST_TGZ" -C "$DIST" .
+(cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")
 
-# --- 7. Image tar ------------------------------------------------------------
-log "exporting image to $IMAGE_TAR (docker save)"
-docker save "$IMAGE_TAG" -o "$IMAGE_TAR"
+# --- 7. Image tar (skipped in --src-only) ------------------------------------
+if $SRC_ONLY; then
+    log "--src-only: skipping docker image tar"
+else
+    log "exporting image to $IMAGE_TAR (docker save)"
+    docker save "$IMAGE_TAG" -o "$IMAGE_TAR"
+fi
 
 # --- 8. Summary --------------------------------------------------------------
 log "done. Artifacts:"
-log "  $DIST_TGZ   ($(du -h "$DIST_TGZ" | cut -f1))"
-log "  $IMAGE_TAR  ($(du -h "$IMAGE_TAR" | cut -f1))"
+log "  $DIST_TGZ       ($(du -h "$DIST_TGZ" | cut -f1))"
+log "  $DIST_TGZ.sha256"
+if ! $SRC_ONLY; then
+    log "  $MODELS_TGZ     ($(du -h "$MODELS_TGZ" | cut -f1))"
+    log "  $MODELS_TGZ.sha256"
+    log "  $IMAGE_TAR      ($(du -h "$IMAGE_TAR" | cut -f1))"
+fi
 log ""
-log "Distribute both files to the deploy host. Then run bishon-install.sh."
+log "Distribute these files to the deploy host. Then run bishon-install.sh."

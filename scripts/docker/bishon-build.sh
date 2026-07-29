@@ -55,7 +55,12 @@ docker build \
     -f "$DOCKERFILE" \
     "$REPO_ROOT/docker"
 
-log "Built $IMAGE"
+# Tag as latest so CI/automation scripts can always pull :latest
+# without parsing version numbers. bishon-install.sh still pins to a
+# specific version via .image-tag; :latest is for human/CI convenience.
+docker tag "$IMAGE" "bishon-$ACC:latest"
+
+log "Built $IMAGE (+ tagged bishon-$ACC:latest)"
 SIZE_BYTES="$(docker image inspect "$IMAGE" --format '{{.Size}}')"
 SIZE_GIB="$(awk -v b="$SIZE_BYTES" 'BEGIN{printf "%.1f", b/1073741824}')"
 log "Size: ${SIZE_BYTES} bytes (~${SIZE_GIB} GiB)"

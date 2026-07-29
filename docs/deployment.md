@@ -87,6 +87,10 @@
 - **Docker** + **NVIDIA Container Toolkit**（仅 CUDA 镜像需要；验证：`docker run --rm --gpus all nvidia/cuda:12.1.0-runtime-ubuntu22.04 nvidia-smi`）。
 - **`curl`**（启动脚本的健康检查需要）。
 - **ext4（或非 9p/drvfs）文件系统**挂载点 — 见 [避坑指南 #2](#避坑指南对照表)。
+- **模型文件**（部署机不需要直接下载，但开发机制作发布包时需要）：
+  - 在线获取：开发机跑 `bash scripts/download-models.sh`（默认从 `hf-mirror.com` 国内镜像）
+  - 离线获取：用 `--offline <bishon-models-*.tar.gz>` 从已有 tarball 解压
+  - 内网无外网：把 `models/` 整目录通过 scp / USB 拷过来即可（gitignored，不入库）
 
 ## 开发机：构建镜像
 

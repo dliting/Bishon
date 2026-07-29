@@ -167,7 +167,12 @@ cp .env.example .env
 # 4. Build the frontend (only required if dist/ is not present)
 cd front_end && npm ci && npm run build && cd ..
 
-# 5. Run
+# 5. Download model weights (~1.3 GB total)
+bash scripts/download-models.sh
+# Qwen3-Reranker-0.6B from hf-mirror.com (China-friendly mirror);
+# PaddleOCR v3 models auto-download via paddleocr package.
+
+# 6. Run
 ./start.sh        # Linux / WSL
 start.bat         # Windows
 ```

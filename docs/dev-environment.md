@@ -113,8 +113,22 @@ cp .env.example .env
 cd front_end && npm ci --legacy-peer-deps && npm run build && cd ..
 cp -r front_end/dist bishon_kernel/bishon_server/
 
-# 下载模型（参考 models/Qwen3-Reranker-0.6B/.git/config 和 paddleocr_models 来源）
+# 下载模型（Qwen3-Reranker 0.6B ~1.2 GB + PaddleOCR v3 ~100 MB）
+bash scripts/download-models.sh
+# 或先 dry-run 看源：
+# bash scripts/download-models.sh --dry-run
 ```
+
+`scripts/download-models.sh` 默认从国内 HuggingFace 镜像（`hf-mirror.com`）拉 Reranker，触发 PaddleOCR 自动下载。脚本支持：
+- `--target <dir>` 自定义模型目录（默认 `./models`）
+- `--skip-rerank` / `--skip-paddleocr` 跳过其中一个
+- `--offline <tar.gz>` 从已有的 models tarball 解压（内网部署用）
+- `--dry-run` 仅打印下载源，不实际下载
+
+环境变量：
+- `HF_ENDPOINT` 自定义 HuggingFace 镜像（默认 `https://hf-mirror.com`）
+- `RERANK_REPO` 自定义 Reranker 仓库 ID（默认 `Qwen/Qwen3-Reranker-0.6B`）
+- `BISHON_PY` bishon conda env 的 python 路径（默认 `/opt/miniconda3/envs/bishon/bin/python`）
 
 ### 5. 验证
 

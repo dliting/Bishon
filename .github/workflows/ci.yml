@@ -73,3 +73,32 @@ jobs:
       - name: Build frontend
         working-directory: front_end
         run: npm run build
+
+  shell:
+    # Bash scripts under docker/, scripts/docker/, and tests/scripts/.
+    # Catches syntax/style regressions and validates release/MANIFEST before
+    # any Docker image / release tarball work happens.
+    name: Shell (bats)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+
+      - name: Syntax check all .sh files
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "FAIL: $f"; fail=1; }
+          done < <(find docker scripts/docker -name '*.sh' -type f)
+          exit $fail
+
+      - name: Validate release/MANIFEST
+        run: bash scripts/docker/validate-manifest.sh --repo-root .
+
+      - name: Run bats tests
+        run: bats tests/scripts/*.bats

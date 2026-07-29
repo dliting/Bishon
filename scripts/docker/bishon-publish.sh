@@ -35,8 +35,12 @@ EOF
     esac
 done
 
-log() { echo "[publish] $*"; }
-die() { echo "[publish] FATAL: $*" >&2; exit 1; }
+export BISHON_LOG_TAG=publish
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
+log() { bishon_log "$@"; }
+die() { bishon_die "$@"; }
 
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir> --release <tar>" >&2; exit 1; }
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"

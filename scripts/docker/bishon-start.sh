@@ -20,8 +20,12 @@ done
 
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
 
-log() { echo "[start] $*"; }
-die() { echo "[start] FATAL: $*" >&2; exit 1; }
+export BISHON_LOG_TAG=start
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
+log() { bishon_log "$@"; }
+die() { bishon_die "$@"; }
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 [ -f "$HOST_DIR/.image-tag" ] || die "$HOST_DIR/.image-tag missing. Run bishon-install.sh first."

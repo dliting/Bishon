@@ -36,11 +36,13 @@ EOF
     esac
 done
 
-log() { echo "[install] $*"; }
-die() { echo "[install] FATAL: $*" >&2; exit 1; }
-
+export BISHON_LOG_TAG=install
 # shellcheck source=lib/common.sh
 source "$(dirname "$0")/lib/common.sh"
+
+# Local aliases so existing `log`/`die` call sites work unchanged.
+log() { bishon_log "$@"; }
+die() { bishon_die "$@"; }
 
 [ -n "$HOST_DIR" ]    || { echo "usage: $0 --host-dir <dir> --release <t> --image <t>" >&2; exit 1; }
 [ -n "$RELEASE_TAR" ] || die "--release required"
@@ -55,8 +57,9 @@ log "target host-dir: $HOST_DIR"
 
 # --- 1. Filesystem sanity (避坑指南 #2: SQLite WAL on 9p/NTFS) ----------------
 mkdir -p "$HOST_DIR"
-fs_type="$(df -T "$HOST_DIR" | awk 'NR==2 {print $2}')"
-bishon_validate_host_dir_fs "$HOST_DIR" || exit 1
+# bishon_validate_host_dir_fs prints the fs_type to stdout on success (saves
+# the caller from re-running df -T).
+fs_type="$(bishon_validate_host_dir_fs "$HOST_DIR")" || exit 1
 log "filesystem OK ($fs_type)"
 
 # --- 2. Directory skeleton ---------------------------------------------------

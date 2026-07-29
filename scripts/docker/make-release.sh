@@ -40,11 +40,12 @@ DIST_TGZ="$REPO_ROOT/dist/bishon-release-$VERSION.tar.gz"
 IMAGE_TAR="$REPO_ROOT/dist/bishon-cuda-image-$VERSION.tar"
 IMAGE_TAG="bishon-cuda:$VERSION"
 
-log() { echo "[release] $*"; }
-die() { echo "[release] FATAL: $*" >&2; exit 1; }
-
+export BISHON_LOG_TAG=release
 # shellcheck source=lib/common.sh
 source "$(dirname "$0")/lib/common.sh"
+
+log() { bishon_log "$@"; }
+die() { bishon_die "$@"; }
 
 # --- 0. Pre-flight checks ----------------------------------------------------
 

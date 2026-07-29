@@ -133,6 +133,17 @@ EOF
     run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_validate_host_dir_fs '$tmp'"
     rm -rf "$tmp"
     [ "$status" -eq 0 ]
+    # On success the function prints the fs_type so the caller can capture it
+    # without re-running df -T.
+    [ "$output" = "$fs_type" ]
+}
+
+@test "bishon_validate_host_dir_fs preserves caller BISHON_LOG_TAG in error" {
+    # I3: error messages must inherit the caller's log tag (e.g. [install])
+    # so operators grepping deploy logs can attribute failures correctly.
+    run bash -c "export BISHON_LOG_TAG=install; source '$REPO_ROOT/scripts/docker/lib/common.sh'; bishon_validate_host_dir_fs /mnt/c/foo"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"[install] FATAL"* ]]
 }
 
 # ---------------------------------------------------------------------------

@@ -38,7 +38,12 @@ done
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir> [--purge-data]" >&2; exit 1; }
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
-log() { echo "[uninstall] $*"; }
+export BISHON_LOG_TAG=uninstall
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+
+log() { bishon_log "$@"; }
+die() { bishon_die "$@"; }
 
 log "stopping + removing container 'bishon' (if any)"
 if docker ps -a --format '{{.Names}}' | grep -qx bishon; then

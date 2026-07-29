@@ -19,10 +19,15 @@ while [[ $# -gt 0 ]]; do
 done
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
 
+export BISHON_LOG_TAG=stop
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+log() { bishon_log "$@"; }
+
 if docker ps -a --format '{{.Names}}' | grep -qx bishon; then
-    echo "[stop] removing container 'bishon'"
+    log "removing container 'bishon'"
     docker stop bishon >/dev/null 2>&1 || true
     docker rm   bishon >/dev/null 2>&1 || true
 else
-    echo "[stop] no container named 'bishon' — nothing to do"
+    log "no container named 'bishon' — nothing to do"
 fi

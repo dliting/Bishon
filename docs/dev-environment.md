@@ -9,7 +9,7 @@
 
 ## 为什么代码要在 WSL ext4 上
 
-WSL2 访问 Windows 文件系统（`/mnt/c`、`/mnt/i` 等）走 9p 协议，对**小文件密集型**操作（Python import、SQLite WAL、git status）有显著的元数据开销；对 SQLite 的 WAL 模式还有兼容性问题（依赖 mmap / shm，9p 不支持），会触发 I/O 错误让进程崩溃。
+WSL2 访问 Windows 文件系统（`/mnt/c`、`/mnt/i` 等）走 9p 协议，对**小文件密集型**操作（Python import、SQLite WAL、git status）有显著的元数据开销；对 SQLite 的 WAL 模式还有兼容性问题（依赖共享内存 `shm_open` 与可写 `mmap`，9p 不支持），会触发 I/O 错误让进程崩溃。
 
 把仓库 clone 到 WSL ext4（如 `/opt/Bishon/V2` 或 `~/projects/Bishon`）后：
 
@@ -37,11 +37,13 @@ WSL2 访问 Windows 文件系统（`/mnt/c`、`/mnt/i` 等）走 9p 协议，对
 
 | 类型 | 例子 | 放哪 |
 |---|---|---|
-| 写密集 + mmap/shm | SQLite (`BISHON_DB/metadata.db`)、FAISS 索引 | **必须** ext4 |
+| 写密集 + 需共享内存/可写 mmap | SQLite (`BISHON_DB/metadata.db`)、FAISS 索引 | **必须** ext4 |
 | 写密集 + 小文件 | 日志（`logs/`） | ext4 |
 | 读密集 + 小文件 + 多次访问 | 源码（`bishon_kernel/`、`front_end/`） | ext4（速度优先） |
-| 读一次 + 大二进制 | 模型权重（`models/*.safetensors`、`*.pdiparams`） | **符号链接**到 Windows（空间优先） |
+| 读一次 + 大二进制 + 只读 mmap | 模型权重（`models/*.safetensors`、`*.pdiparams`） | **符号链接**到 Windows（空间优先） |
 | 配置 | `.env` | ext4（避免 publish 覆盖；WSL 内编辑也快） |
+
+> 模型权重选择符号链接的关键：PaddleOCR / Reranker 加载时只对 `.pdiparams` / `.safetensors` 文件做**只读 mmap**，没有共享内存或可写 mmap 的需求。9p 对只读 mmap 是支持的（启动时多读 30-60 秒可接受），但对 `shm_open` 和可写 mmap 不支持。SQLite WAL 同时依赖这两者——所以 BISHON_DB 不能跨 9p，但 models 可以。
 
 ## 从零搭建（一次性）
 

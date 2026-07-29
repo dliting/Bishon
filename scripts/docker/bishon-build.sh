@@ -36,21 +36,26 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOCKERFILE="$REPO_ROOT/docker/Dockerfile.$ACC"
 
+export BISHON_LOG_TAG=build
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+log() { bishon_log "$@"; }
+die() { bishon_die "$@"; }
+
 [ -f "$DOCKERFILE" ] || {
-    echo "FATAL: $DOCKERFILE not found." >&2
+    die "$DOCKERFILE not found."
     [ "$ACC" = "ascend" ] && \
-        echo "       Ascend image is a placeholder in this round; not implemented yet." >&2
-    exit 1
+        log "Ascend image is a placeholder in this round; not implemented yet."
 }
 
 IMAGE="bishon-$ACC:$VERSION"
-echo "[build] Building $IMAGE from $DOCKERFILE ..."
+log "Building $IMAGE from $DOCKERFILE ..."
 docker build \
     -t "$IMAGE" \
     -f "$DOCKERFILE" \
     "$REPO_ROOT/docker"
 
-echo "[build] Built $IMAGE"
+log "Built $IMAGE"
 SIZE_BYTES="$(docker image inspect "$IMAGE" --format '{{.Size}}')"
 SIZE_GIB="$(awk -v b="$SIZE_BYTES" 'BEGIN{printf "%.1f", b/1073741824}')"
-echo "[build] Size: ${SIZE_BYTES} bytes (~${SIZE_GIB} GiB)"
+log "Size: ${SIZE_BYTES} bytes (~${SIZE_GIB} GiB)"

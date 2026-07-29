@@ -5,14 +5,18 @@
 #   # shellcheck source=lib/common.sh
 #   source "$(dirname "$0")/lib/common.sh"
 #
+# Each script sets its own log tag via:
+#   export BISHON_LOG_TAG=install
+#
 # Design:
 #   - No side effects at source time.
 #   - Each function prefixed with `bishon_` to avoid collisions.
-#   - Pure where possible (parse, validate) so they can be unit-tested.
+#   - Pure where possible (parse) so they can be unit-tested.
 
-# Print an informational message to stdout. Caller's [tag] prefix is set by
+# Print an informational message to stdout. Tag is taken from
 # BISHON_LOG_TAG (default: "bishon"). Override per-script:
-#   BISHON_LOG_TAG=install source lib/common.sh
+#   export BISHON_LOG_TAG=install
+#   source "$(dirname "$0")/lib/common.sh"
 bishon_log() {
     printf '[%s] %s\n' "${BISHON_LOG_TAG:-bishon}" "$*"
 }
@@ -21,6 +25,23 @@ bishon_log() {
 bishon_die() {
     printf '[%s] FATAL: %s\n' "${BISHON_LOG_TAG:-bishon}" "$*" >&2
     exit 1
+}
+
+# Print a recoverable error message to stderr and return non-zero (no exit).
+# Use this inside library functions that need to report a failure but let the
+# caller decide whether to die or recover.
+bishon_warn() {
+    printf '[%s] FATAL: %s\n' "${BISHON_LOG_TAG:-bishon}" "$*" >&2
+    return 1
+}
+
+# Trim leading and trailing whitespace without spawning a subprocess (the
+# `xargs` alternative mishandles quotes/backslashes).
+_bishon_trim() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"   # strip leading whitespace
+    s="${s%"${s##*[![:space:]]}"}"   # strip trailing whitespace
+    printf '%s' "$s"
 }
 
 # Parse a manifest file: each non-comment, non-blank line is treated as a path.
@@ -35,32 +56,36 @@ bishon_parse_manifest() {
     local raw path
     while IFS= read -r raw || [ -n "$raw" ]; do
         [[ "$raw" =~ ^[[:space:]]*# ]] && continue
-        path="$(printf '%s' "$raw" | xargs)"   # trim surrounding whitespace
+        path="$(_bishon_trim "$raw")"
         [ -z "$path" ] && continue
         printf '%s\n' "$path"
     done < "$manifest"
 }
 
 # Validate that HOST_DIR is on a filesystem safe for SQLite WAL.
-# Returns 0 if safe; returns 1 with a human-readable message on stderr if not.
+# Prints the filesystem type to stdout on success (consumers can capture it
+# for logging without re-running df -T).
+# Returns 0 if safe; calls bishon_warn (returns 1) if not.
 #
 # Checks two things, in order:
 #   1. Path doesn't live under well-known 9p/drvfs mount roots (/mnt/*, /media/*,
 #      /run/media/*). These are almost always unsafe.
 #   2. df -T doesn't report a known-incompatible fs type.
+#
+# Error messages respect BISHON_LOG_TAG so the caller's tag (e.g. [install])
+# is preserved in deploy logs.
 bishon_validate_host_dir_fs() {
     local host_dir="$1"
-    [ -n "$host_dir" ] || { echo "FATAL: validate_host_dir_fs: empty path" >&2; return 1; }
+    [ -n "$host_dir" ] || { bishon_warn "validate_host_dir_fs: empty path"; return 1; }
 
     case "$host_dir" in
         /mnt/*|/media/*|/run/media/*)
-            cat >&2 <<EOF
-FATAL: $host_dir looks like a removable / cross-OS mount.
+            bishon_warn "$host_dir looks like a removable / cross-OS mount.
        WSL mounts Windows drives under /mnt/* (9p/drvfs); Linux auto-mounts
        under /media/* or /run/media/* (often cifs/9p). SQLite WAL will fail
        with I/O errors on these filesystems.
-       Use an ext4 path inside WSL, e.g. ~/bishon-data or /var/lib/bishon.
-EOF
+       Use an ext4 path inside WSL, e.g. ~/bishon-data or /var/lib/bishon." \
+                || return 1
             return 1 ;;
     esac
 
@@ -68,11 +93,14 @@ EOF
     fs_type="$(df -T "$host_dir" 2>/dev/null | awk 'NR==2 {print $2}')"
     case "$fs_type" in
         9p|drvfs|tmpfs|overlay|smbfs|cifs)
-            echo "FATAL: $host_dir filesystem is '$fs_type' — not safe for SQLite WAL. Use ext4." >&2
+            bishon_warn "$host_dir filesystem is '$fs_type' — not safe for SQLite WAL. Use ext4." \
+                || return 1
             return 1 ;;
         "")
-            echo "FATAL: could not determine filesystem of $host_dir" >&2
+            bishon_warn "could not determine filesystem of $host_dir" || return 1
             return 1 ;;
     esac
+    # Success: print fs_type to stdout so the caller can capture it.
+    printf '%s\n' "$fs_type"
     return 0
 }

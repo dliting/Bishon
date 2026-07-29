@@ -32,23 +32,21 @@ EOF
     esac
 done
 
+export BISHON_LOG_TAG=manifest
 source "$(dirname "$0")/lib/common.sh"
 
 MANIFEST="$REPO_ROOT/release/MANIFEST"
-[ -f "$MANIFEST" ] || {
-    echo "FATAL: $MANIFEST not found." >&2
-    exit 1
-}
+[ -f "$MANIFEST" ] || bishon_die "$MANIFEST not found."
 
 missing=0
 total=0
 while IFS= read -r path; do
     total=$((total + 1))
     if [ ! -e "$REPO_ROOT/$path" ]; then
-        echo "MISSING: $path"
+        bishon_log "MISSING: $path"
         missing=$((missing + 1))
     fi
 done < <(bishon_parse_manifest "$MANIFEST")
 
-echo "Manifest checked: $total paths, $missing missing"
+bishon_log "Manifest checked: $total paths, $missing missing"
 [ "$missing" -eq 0 ]

@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+- **`scripts/download-models.sh`**: idempotent model downloader for new developers and deploy hosts. Defaults to `hf-mirror.com` (HuggingFace China mirror); PaddleOCR models auto-fetched via the `paddleocr` package. Flags: `--target`, `--dry-run`, `--offline <tar>`, `--skip-rerank`, `--skip-paddleocr`. Respects `HF_ENDPOINT`, `RERANK_REPO`, `BISHON_PY` env vars.
+- **Models tarball separation**: `make-release.sh` now produces `bishon-models-<ver>.tar.gz` as a standalone artifact, separate from the main release tarball. `bishon-install.sh --models <tar>` accepts it optionally — install without models is valid (Rerank disabled, OCR warns at startup).
+- **`make-release.sh --src-only`**: skips env + models + image; produces a tiny source-only tarball in ~5s for quick publish testing.
+- **SHA256 checksums**: every tarball now ships with a matching `.sha256` file for deploy-side integrity verification.
+- **`scripts/docker/preflight.sh`**: standalone release-readiness checker (env presence, WSL Ubuntu version, env imports, frontend dist, paddleocr models, docker image). Called by `make-release.sh`; also usable ad-hoc.
+- **`bishon-cuda:latest` tag**: `bishon-build.sh` now also tags the image as `latest` for CI/automation convenience.
+
+### Changed
+- `make-release.sh` pre-flight checks refactored to delegate to `preflight.sh` (single source of truth).
+- `download-models.sh --dry-run` now reflects actual filesystem state: prints "would skip" for already-populated dirs instead of unconditionally saying "would download".
+
+### Documentation
+- `README.md` Quick Start: new step 5 "Download model weights" pointing to `scripts/download-models.sh`.
+- `docs/dev-environment.md`: documents the script's flags and env vars; clarifies that `--target` only affects Reranker placement (PaddleOCR path is hardcoded by `model_config.py`).
+- `docs/deployment.md` "前置条件": clarifies three ways to acquire models (online via script, offline via tarball, or pre-existing dir copy).
+
+### Test
+- `tests/scripts/test_download_models.bats`: 9 new cases covering syntax, defensive style, `--help`, `--dry-run`, `--offline` tarball extraction, idempotency, `HF_ENDPOINT` override, and unknown-flag exit code. Bats suite: 20 → 29.
+
+### Operational
+- Git workflow: introduced `dev` branch for daily development; `main` reserved for tagged releases. CI now triggers on `main` + `dev` pushes.
+- Local worktree layout documented: `I:\Bishon\V2\{main,dev}\` (Windows junctions) + `/opt/Bishon/V2/{main,dev}/` (WSL ext4 symlinks), sharing `models-shared/` to avoid duplicating 2.5 GB.
 
 ## [2.1.0] - 2026-07-29
 

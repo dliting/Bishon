@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bishon V2",
     description="本地知识库问答系统",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 

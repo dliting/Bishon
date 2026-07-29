@@ -215,9 +215,9 @@ Bishon V2 把重量级微服务栈换成单进程部署，一台工作站就能�
 
 ## Roadmap
 
-- **v2.0**（当前版本）：裸金属单进程部署，MIT 协议，双语文档，GitHub Actions CI。
-- **v2.1**：可选 Docker / docker-compose 部署，MkDocs 文档站（GitHub Pages）。
-- **v2.2**：多模态文档（音视频转写），可插拔存储后端。
+- **v2.0**：裸金属单进程部署，MIT 协议，双语文档，GitHub Actions CI。
+- **v2.1**（当前版本）：CUDA GPU 主机的**离线 Docker 部署**——见 [`docs/deployment.md`](docs/deployment.md)。MkDocs 文档站（GitHub Pages）仍待补。
+- **v2.2**：多模态文档（音视频转写），可插拔存储后端，华为昇腾（CANN）镜像变体。
 
 ## 致谢
 

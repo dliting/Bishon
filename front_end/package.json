@@ -1,6 +1,6 @@
 {
   "name": "bishon-frontend",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Bishon V2 frontend - Vue 3 + Vite + TypeScript",
   "license": "MIT",
   "tagname": "bishon",

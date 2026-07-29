@@ -68,7 +68,14 @@ fi
 
 # --- 3. Source install (last resort; needs curl + tar + sh) ---
 if command -v curl >/dev/null 2>&1; then
-    BATS_VERSION="1.2.1"
+    # Read version from the vendored copy if present (keeps single source of
+    # truth). Fall back to a sensible default.
+    VENDORED_VERSION_FILE="$(cd "$(dirname "$0")/../.." && pwd)/third_party/bats-core/VERSION"
+    if [ -f "$VENDORED_VERSION_FILE" ]; then
+        BATS_VERSION="$(cat "$VENDORED_VERSION_FILE" | xargs)"
+    else
+        BATS_VERSION="1.2.1"
+    fi
     echo "[install-bats] source install v${BATS_VERSION} to ~/.local (last-resort)"
     TMP="$(mktemp -d)"
     trap 'rm -rf "$TMP"' EXIT

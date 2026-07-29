@@ -12,3 +12,10 @@ Initial maintainer:
 
 Third-party dependencies retain their original licenses. See requirements.txt
 and front_end/package.json for the full dependency list.
+
+This distribution also embeds source code from the following projects:
+
+  * bats-core (https://github.com/bats-core/bats-core)
+    Version: see third_party/bats-core/VERSION
+    License: MIT (see third_party/bats-core/LICENSE.md)
+    Used by scripts/ci/shell-checks.sh for shell-test execution.

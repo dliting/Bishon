@@ -82,10 +82,15 @@ if ! $SKIP_RERANK; then
     log "=== Qwen3-Reranker-0.6B → $RERANK_DIR ==="
     log "source: $HF_ENDPOINT/$RERANK_REPO"
 
-    if $DRY_RUN; then
+    if [ -d "$RERANK_DIR" ] && [ -n "$(ls -A "$RERANK_DIR" 2>/dev/null)" ]; then
+        # Idempotency: existing dir means no re-download (bandwidth-friendly).
+        if $DRY_RUN; then
+            log "(dry-run) $RERANK_DIR already populated — would skip"
+        else
+            log "$RERANK_DIR already populated — skipping (remove dir to force re-download)"
+        fi
+    elif $DRY_RUN; then
         log "(dry-run) would: git clone --depth 1 $HF_ENDPOINT/$RERANK_REPO $RERANK_DIR"
-    elif [ -d "$RERANK_DIR/.git" ] || [ -d "$RERANK_DIR" ] && [ -n "$(ls -A "$RERANK_DIR" 2>/dev/null)" ]; then
-        log "$RERANK_DIR already populated — skipping (use --target /empty/path to force)"
     else
         mkdir -p "$RERANK_DIR"
         # git clone --depth 1 pulls only the latest commit; much smaller than full history.

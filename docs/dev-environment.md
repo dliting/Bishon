@@ -125,6 +125,8 @@ bash scripts/download-models.sh
 - `--offline <tar.gz>` 从已有的 models tarball 解压（内网部署用）
 - `--dry-run` 仅打印下载源，不实际下载
 
+> **注意**：`--target` 只影响 Qwen3-Reranker 的下载位置。PaddleOCR 模型由 `paddleocr` 包按 `bishon_kernel/configs/model_config.py` 推导的路径（`<repo-root>/models/paddleocr_models/`）放置，与 `--target` 无关——这是应用代码的硬约束。如需把整套模型放到别处，建议符号链接 `models/` 整目录而不是改 `--target`。
+
 环境变量：
 - `HF_ENDPOINT` 自定义 HuggingFace 镜像（默认 `https://hf-mirror.com`）
 - `RERANK_REPO` 自定义 Reranker 仓库 ID（默认 `Qwen/Qwen3-Reranker-0.6B`）

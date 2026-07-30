@@ -153,6 +153,32 @@ source "$SCRIPT_DIR/lib/common.sh"
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 
+# --- adapt to bundle environment -------------------------------------------
+# When running from inside a deploy bundle (scripts/bishon-deploy.sh at
+# <bundle>/scripts/bishon-deploy.sh), REPO_ROOT computed as
+# $(dirname "$0")/../.. wrongly points to the bundle's parent. Detect that
+# and re-root to the bundle directory so VERSION, preflight source dir, etc.
+# resolve correctly.
+if [ -z "$BUNDLE_DIR" ]; then
+    for cand in "$PWD" "$(dirname "$SCRIPT_DIR")"; do
+        if ls "$cand"/bishon-release-*.tar.gz >/dev/null 2>&1; then
+            BUNDLE_DIR="$cand"
+            break
+        fi
+    done
+fi
+if [ -n "$BUNDLE_DIR" ]; then
+    # We're in a bundle. Use the bundle's bishon/ subdir (extracted source)
+    # as the source dir if it exists.
+    if [ -d "$BUNDLE_DIR/bishon/bishon_kernel" ]; then
+        BUNDLE_SOURCE_DIR="$BUNDLE_DIR/bishon"
+    fi
+    # Fallback: use bundle dir itself if it happens to be the source root.
+    [ -z "${BUNDLE_SOURCE_DIR:-}" ] && BUNDLE_SOURCE_DIR="$BUNDLE_DIR"
+else
+    BUNDLE_SOURCE_DIR=""
+fi
+
 # --- helpers ----------------------------------------------------------------
 ask() {
     # ask "prompt" "default" → prints user input or default on Enter.
@@ -357,9 +383,16 @@ if [ -z "$VERSION_FOR_PREFLIGHT" ] && [ -f "$REPO_ROOT/VERSION" ]; then
 fi
 MODE_FOR_PREFLIGHT="${DEFAULT_MODE}"
 log "=== preflight (informational; failures don't block) ==="
-bash "$SCRIPT_DIR/preflight.sh" --mode "$MODE_FOR_PREFLIGHT" \
-    ${VERSION_FOR_PREFLIGHT:+--version "$VERSION_FOR_PREFLIGHT"} \
-    2>&1 | sed 's/^/  /' || true
+PREFLIGHT_ARGS=(--mode "$MODE_FOR_PREFLIGHT")
+[ -n "$VERSION_FOR_PREFLIGHT" ] && PREFLIGHT_ARGS+=(--version "$VERSION_FOR_PREFLIGHT")
+# When running from a bundle, pass the source dir so preflight can find
+# bishon_kernel/bishon_server/dist/ and models/ inside the extracted source.
+if [ -n "${BUNDLE_SOURCE_DIR:-}" ]; then
+    export CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
+    export ENV_SRC="${CONDA_ROOT}/envs/bishon"
+    PREFLIGHT_ARGS+=(--source-dir "$BUNDLE_SOURCE_DIR")
+fi
+bash "$SCRIPT_DIR/preflight.sh" "${PREFLIGHT_ARGS[@]}" 2>&1 | sed 's/^/  /' || true
 
 # --- gather missing inputs --------------------------------------------------
 if [ -z "$MODE" ]; then

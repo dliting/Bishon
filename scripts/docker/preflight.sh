@@ -19,12 +19,14 @@ ENV_SRC="$CONDA_ROOT/envs/bishon"
 VERSION=""
 SRC_ONLY=false
 MODE="release"   # release | docker-online | docker-offline | bare-metal
+SOURCE_DIR=""    # override REPO_ROOT for bundle-of-fline deploy preview
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version)  VERSION="$2"; shift 2 ;;
-        --src-only) SRC_ONLY=true; shift ;;
-        --mode)     MODE="$2"; shift 2 ;;
+        --version)    VERSION="$2"; shift 2 ;;
+        --src-only)   SRC_ONLY=true; shift ;;
+        --mode)       MODE="$2"; shift 2 ;;
+        --source-dir) SOURCE_DIR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
 Usage: $0 [--version <ver>] [--src-only] [--mode <m>]
@@ -43,6 +45,9 @@ fail=0
 info() { echo "  INFO: $*"; }
 p()  { echo "  PASS: $*"; }
 f()  { echo "  FAIL: $*" >&2; fail=1; }
+
+# If --source-dir given, use it for all REPO_ROOT-relative checks.
+CHECK_ROOT="${SOURCE_DIR:-$REPO_ROOT}"
 
 echo "=== Bishon v2 preflight (mode=$MODE) ==="
 
@@ -75,7 +80,7 @@ else
 fi
 
 # --- 4. Frontend dist -------------------------------------------------------
-DIST_INDEX="$REPO_ROOT/bishon_kernel/bishon_server/dist/bishon/index.html"
+DIST_INDEX="$CHECK_ROOT/bishon_kernel/bishon_server/dist/bishon/index.html"
 if [ -f "$DIST_INDEX" ]; then
     p "frontend dist present"
 else
@@ -86,7 +91,7 @@ fi
 if $SRC_ONLY; then
     p "models checks skipped (--src-only)"
 else
-    paddle_dir="$REPO_ROOT/models/paddleocr_models"
+    paddle_dir="$CHECK_ROOT/models/paddleocr_models"
     if [ -d "$paddle_dir" ]; then
         subdirs="$(find "$paddle_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
         if [ "$subdirs" -ge 4 ]; then

@@ -59,9 +59,11 @@ fi
 
 ENV_SRC="$CONDA_ROOT/envs/bishon"
 DIST="$REPO_ROOT/dist/release-$VERSION"
-DIST_TGZ="$REPO_ROOT/dist/bishon-release-$VERSION.tar.gz"
-MODELS_TGZ="$REPO_ROOT/dist/bishon-models-$VERSION.tar.gz"
-IMAGE_TAR="$REPO_ROOT/dist/bishon-cuda-image-$VERSION.tar"
+# All tarballs live inside the bundle dir so the operator copies one directory
+# and everything (entry script + tarballs + checksums) is in one place.
+DIST_TGZ="$DIST/bishon-release-$VERSION.tar.gz"
+MODELS_TGZ="$DIST/bishon-models-$VERSION.tar.gz"
+IMAGE_TAR="$DIST/bishon-cuda-image-$VERSION.tar"
 IMAGE_TAG="bishon-cuda:$VERSION"
 
 export BISHON_LOG_TAG=release
@@ -164,8 +166,15 @@ DEPLOY_SH
 cp "$REPO_ROOT/.env.example" "$DIST/"
 
 # --- 6. Main tarball ---------------------------------------------------------
+# Exclude other bundle artifacts (models tar, image tar, existing release tar)
+# so the main tarball carries only source+env+scripts.
 log "creating $DIST_TGZ (~this step is slow due to gzip)"
-tar -czf "$DIST_TGZ" -C "$DIST" .
+tar -czf "$DIST_TGZ" -C "$DIST" \
+    --exclude 'bishon-models-*.tar.gz' \
+    --exclude 'bishon-cuda-image-*.tar' \
+    --exclude 'bishon-release-*.tar.gz' \
+    --exclude 'bishon-release-*.tar.gz.sha256' \
+    .
 (cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")
 
 # --- 7. Image tar (skipped in --src-only) ------------------------------------
@@ -187,6 +196,7 @@ if ! $SRC_ONLY; then
 fi
 log ""
 log ""
-log "Distribute the whole $DIST directory to the deploy host."
+log "Distribute the whole directory to the deploy host:"
+log "  $DIST"
 log "On the deploy host, cd into it and run:"
 log "  bash deploy.sh"

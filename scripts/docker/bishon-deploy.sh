@@ -340,7 +340,7 @@ if [ -n "$BUNDLE_DIR" ]; then
         local var="$1" pattern="$2" descr="$3"
         [ -n "${!var:-}" ] && return 0
         local matches
-        matches=$(ls "$BUNDLE_DIR"/$pattern 2>/dev/null | sort)
+        matches=$(ls "$BUNDLE_DIR"/$pattern 2>/dev/null | sort) || true  # ls exits 2 on no match → pipefail → set -e; || true guards it
         case "$(echo "$matches" | wc -l)" in
             1)  printf -v "$var" "%s" "$matches"
                 log "auto-detected $descr: ${!var}"

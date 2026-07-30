@@ -9,7 +9,7 @@
 #   bash scripts/docker/make-release.sh --version 2.1.0 [--conda-root /opt/miniconda3]
 #
 # Run inside WSL (Ubuntu 22.04) with the bishon conda env already created and
-# all Python deps installed. The image must already exist (run bishon-build.sh
+# all Python deps installed. The image must already exist (run build.sh
 # first) — this script refuses to ship a release without its matching image.
 #
 # Hard constraint: WSL Ubuntu version MUST equal the image base (22.04), or
@@ -68,7 +68,7 @@ EOF
     esac
 done
 
-# Default VERSION from file if not passed on CLI (matches bishon-build.sh).
+# Default VERSION from file if not passed on CLI (matches build.sh).
 if [ -z "$VERSION" ]; then
     VERSION_FILE="$REPO_ROOT/VERSION"
     [ -f "$VERSION_FILE" ] || { echo "FATAL: $VERSION_FILE missing and --version not given" >&2; exit 1; }
@@ -185,7 +185,7 @@ cat > "$DIST/deploy.sh" <<'DEPLOY_SH'
 # tarballs in the same directory.
 set -euo pipefail
 cd "$(dirname "$0")"
-exec bash scripts/bishon-deploy.sh "$@"
+exec bash scripts/deploy.sh "$@"
 DEPLOY_SH
 
 cp "$REPO_ROOT/.env.example" "$DIST/"

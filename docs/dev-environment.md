@@ -198,7 +198,7 @@ bash run_all_tests.sh
 
 ```bash
 # 构建镜像（联网，下载 cuda base + miniconda）
-bash scripts/docker/bishon-build.sh --version 2.1.0
+bash scripts/docker/build.sh --version 2.1.0
 
 # 制作离线发布包（含 env、源码、模型、镜像 tar）
 bash scripts/docker/make-release.sh --version 2.1.0
@@ -217,9 +217,9 @@ ls -la dist/
 # 开发机：重新打包
 bash scripts/docker/make-release.sh --version <new>
 # 把新 tarball 拷到部署机，再
-bash <host-dir>/scripts/bishon-publish.sh --host-dir <host-dir> --release <new-tar>
-bash <host-dir>/scripts/bishon-stop.sh  --host-dir <host-dir>
-bash <host-dir>/scripts/bishon-start.sh --host-dir <host-dir>
+bash <host-dir>/scripts/publish.sh --host-dir <host-dir> --release <new-tar>
+bash <host-dir>/scripts/stop.sh  --host-dir <host-dir>
+bash <host-dir>/scripts/start.sh --host-dir <host-dir>
 ```
 
 详见 [`docs/deployment.md` § 部署机：升级](./deployment.md#部署机升级publish)。

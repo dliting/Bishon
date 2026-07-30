@@ -259,16 +259,16 @@ on the deploy side.
 
 ```bash
 # Developer side (WSL Ubuntu 22.04, bishon conda env present)
-bash scripts/docker/bishon-build.sh   --version 2.1.0
+bash scripts/docker/build.sh   --version 2.1.0
 bash scripts/docker/make-release.sh   --version 2.1.0
 
 # Deploy side (any Linux host with Docker + NVIDIA Container Toolkit)
-bash scripts/docker/bishon-install.sh \
+bash scripts/docker/install.sh \
     --host-dir /var/lib/bishon \
     --release bishon-release-2.1.0.tar.gz \
     --image   bishon-cuda-image-2.1.0.tar
 # edit /var/lib/bishon/.env, then:
-bash /var/lib/bishon/scripts/bishon-start.sh --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/start.sh --host-dir /var/lib/bishon
 ```
 
 Full instructions (env slimming, host-dir filesystem constraints, upgrade

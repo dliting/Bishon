@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bishon-publish.sh — upgrade code/models/(optional) env on an installed host.
+# publish.sh — upgrade code/models/(optional) env on an installed host.
 #
 # Usage:
-#   bash bishon-publish.sh --host-dir <dir> --release <new-release.tar.gz>
+#   bash publish.sh --host-dir <dir> --release <new-release.tar.gz>
 #
 # Atomically replaces (with timestamped backup, then deletes the backup):
 #   - bishon/           (source code)
@@ -15,7 +15,7 @@
 #   - logs/             (runtime logs)
 #   - .image-tag, .accelerator
 #
-# After publish, restart the container: bishon-stop.sh && bishon-start.sh.
+# After publish, restart the container: stop.sh && start.sh.
 
 set -euo pipefail
 
@@ -28,19 +28,19 @@ while [[ $# -gt 0 ]]; do
         --release)  RELEASE_TAR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-bishon-publish.sh — Upgrade code/models on an installed host (in place).
+publish.sh — Upgrade code/models on an installed host (in place).
 
 Atomically replaces bishon/ (source) and models/ in <host-dir> from a new
 release tarball, then optionally python-env/ if the new tarball carries one.
 Never touches .env, BISHON_DB/, logs/, .image-tag, .accelerator.
 
-After publish, restart the container: bishon-stop.sh && bishon-start.sh.
+After publish, restart the container: stop.sh && start.sh.
 
 USAGE
   bash $0 --host-dir <dir> --release <new-release.tar.gz>
 
 FLAGS
-  --host-dir <dir>     Directory created by bishon-install.sh.
+  --host-dir <dir>     Directory created by install.sh.
   --release <tar.gz>   New release tarball (from make-release.sh).
                        Use --src-only mode in make-release.sh for code-only
                        patches (no env, no models) — much smaller tarball.
@@ -63,16 +63,16 @@ die() { bishon_die "$@"; }
 
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir> --release <tar>" >&2; exit 1; }
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
-[ -d "$HOST_DIR/bishon" ] || die "$HOST_DIR does not look installed (no bishon/ subdir). Run bishon-install.sh first."
+[ -d "$HOST_DIR/bishon" ] || die "$HOST_DIR does not look installed (no bishon/ subdir). Run install.sh first."
 # Fail fast if other install artifacts are missing — publish cannot repair
-# them, and continuing would let bishon-start.sh fail later with a confusing
+# them, and continuing would let start.sh fail later with a confusing
 # 'python-env/bin missing' or '.image-tag missing' error.
-[ -f "$HOST_DIR/.image-tag" ]     || die "$HOST_DIR/.image-tag missing. Was bishon-install.sh ever run?"
-[ -d "$HOST_DIR/python-env/bin" ] || die "$HOST_DIR/python-env/bin missing. Publish cannot repair a broken env; re-run bishon-install.sh."
+[ -f "$HOST_DIR/.image-tag" ]     || die "$HOST_DIR/.image-tag missing. Was install.sh ever run?"
+[ -d "$HOST_DIR/python-env/bin" ] || die "$HOST_DIR/python-env/bin missing. Publish cannot repair a broken env; re-run install.sh."
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 TS="$(date +%Y%m%d-%H%M%S)"
-# Same-FS mktemp so `mv` is atomic (see bishon-install.sh for rationale).
+# Same-FS mktemp so `mv` is atomic (see install.sh for rationale).
 TMP_DIR="$(mktemp -d -p "$HOST_DIR" .tmp.publish.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -119,6 +119,6 @@ Preserved (NEVER touched):
    .env, BISHON_DB/, logs/, .image-tag, .accelerator
 
 Next step — restart the container:
-   bash $HOST_DIR/scripts/bishon-stop.sh  --host-dir $HOST_DIR
-   bash $HOST_DIR/scripts/bishon-start.sh --host-dir $HOST_DIR
+   bash $HOST_DIR/scripts/stop.sh  --host-dir $HOST_DIR
+   bash $HOST_DIR/scripts/start.sh --host-dir $HOST_DIR
 EOF

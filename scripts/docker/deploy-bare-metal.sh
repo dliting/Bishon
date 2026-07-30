@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/docker/bishon-deploy-bare-metal.sh
+# scripts/docker/deploy-bare-metal.sh
 #
 # L2 deployment module: Bare-metal mode. No Docker. Just:
 #   1. preflight --mode bare-metal (env, WSL Ubuntu, deps)
@@ -7,11 +7,11 @@
 #   3. bash scripts/download-models.sh (if --models-source online)
 #   4. bash start.sh
 #
-# Usually invoked by bishon-deploy.sh (the wizard). Can also be called
+# Usually invoked by deploy.sh (the wizard). Can also be called
 # directly when the user knows they want bare-metal.
 #
 # Usage:
-#   bash bishon-deploy-bare-metal.sh --source-dir <repo> [--conda-env <path>]
+#   bash deploy-bare-metal.sh --source-dir <repo> [--conda-env <path>]
 #       [--models-source online|tarball|skip] [--models <tar>]
 #       [--install-deps] [--no-start] [--dry-run]
 
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)       DRY_RUN=true; shift ;;
         --help|-h)
             cat <<'EOF'
-bishon-deploy-bare-metal.sh — L2 bare-metal deployment module.
+deploy-bare-metal.sh — L2 bare-metal deployment module.
 
 Runs the service directly with uvicorn (no Docker). Steps:
   1. preflight --mode bare-metal  (informational checks)
@@ -47,7 +47,7 @@ Runs the service directly with uvicorn (no Docker). Steps:
   4. bash start.sh
 
 USAGE
-  bash bishon-deploy-bare-metal.sh --source-dir <repo> [flags...]
+  bash deploy-bare-metal.sh --source-dir <repo> [flags...]
 
 FLAGS
   --source-dir <path>      Bishon V2 repo root (REQUIRED).
@@ -62,14 +62,14 @@ FLAGS
 
 EXAMPLES
   Auto-detect env, skip models, no pip reinstall:
-    bash bishon-deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev
+    bash deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev
 
   Fresh install with online models + pip reinstall:
-    bash bishon-deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev \
+    bash deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev \
         --install-deps --models-source online
 
   Dry-run:
-    bash bishon-deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev --dry-run
+    bash deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev --dry-run
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;

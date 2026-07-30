@@ -25,13 +25,13 @@ die() { echo "[entrypoint] FATAL: $*" >&2; exit 1; }
 
 # --- 1. Volume layout validation --------------------------------------------
 [ -d "$DATA_ROOT/python-env/bin" ] || \
-    die "$DATA_ROOT/python-env missing or incomplete. Run bishon-install.sh."
+    die "$DATA_ROOT/python-env missing or incomplete. Run install.sh."
 [ -f "$DATA_ROOT/.env" ] || \
-    die "$DATA_ROOT/.env missing. Run bishon-install.sh."
+    die "$DATA_ROOT/.env missing. Run install.sh."
 [ -d "$DATA_ROOT/bishon/bishon_kernel" ] || \
-    die "$DATA_ROOT/bishon/bishon_kernel missing. Run bishon-publish.sh."
+    die "$DATA_ROOT/bishon/bishon_kernel missing. Run publish.sh."
 [ -d "$DATA_ROOT/models" ] || \
-    die "$DATA_ROOT/models missing. Run bishon-install.sh."
+    die "$DATA_ROOT/models missing. Run install.sh."
 
 # --- 2. Symlink the bind-mounted env into miniconda3 standard path -----------
 # This makes baked-in shebangs and absolute paths inside the env (which were

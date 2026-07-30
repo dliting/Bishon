@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# scripts/docker/bishon-deploy-docker.sh
+# scripts/docker/deploy-docker.sh
 #
 # L2 deployment module: Docker mode. Handles online (pull), offline (load),
-# and existing-image scenarios. Calls bishon-install.sh + bishon-start.sh.
+# and existing-image scenarios. Calls install.sh + start.sh.
 #
-# Usually invoked by bishon-deploy.sh (the wizard). Can also be called
+# Usually invoked by deploy.sh (the wizard). Can also be called
 # directly when the user knows they want Docker mode.
 #
 # Usage:
-#   bash bishon-deploy-docker.sh --host-dir <dir> --release <tar> \
+#   bash deploy-docker.sh --host-dir <dir> --release <tar> \
 #       (--image <tar> | --pull [--registry ghcr|aliyun] | --image-source existing) \
 #       [--models <tar>] [--tag <ver>] [--dry-run]
 
@@ -16,7 +16,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-# All args are forwarded to bishon-install.sh, except --dry-run and --start
+# All args are forwarded to install.sh, except --dry-run and --start
 # which are handled here.
 HOST_DIR=""
 RELEASE_TAR=""
@@ -31,34 +31,34 @@ while [[ $# -gt 0 ]]; do
         --no-start)     START_AFTER=false; shift ;;
         --help|-h)
             cat <<'EOF'
-bishon-deploy-docker.sh — L2 Docker deployment module.
+deploy-docker.sh — L2 Docker deployment module.
 
-Orchestrates bishon-install.sh + bishon-start.sh for any Docker mode
+Orchestrates install.sh + start.sh for any Docker mode
 (online pull, offline load, or already-existing image). All flags except
-the two listed below are forwarded to bishon-install.sh.
+the two listed below are forwarded to install.sh.
 
 USAGE
-  bash bishon-deploy-docker.sh --host-dir <dir> --release <tar> \
+  bash deploy-docker.sh --host-dir <dir> --release <tar> \
       (--image <tar> | --pull [--registry ghcr|aliyun] | --image-source existing) \
       [--models <tar>] [--tag <ver>] [--accelerator cuda]
 
 FLAGS
   --dry-run        Print the install.sh + start.sh invocation plan, do not run.
   --no-start       Stop after install.sh; skip start.sh (useful for staging).
-  All other flags are forwarded to bishon-install.sh. See:
-    bishon-install.sh --help
+  All other flags are forwarded to install.sh. See:
+    install.sh --help
 
 EXAMPLES
   Online pull from ghcr.io:
-    bash bishon-deploy-docker.sh --host-dir /var/lib/bishon \
+    bash deploy-docker.sh --host-dir /var/lib/bishon \
         --release r.tar.gz --pull --registry ghcr
 
   Offline load:
-    bash bishon-deploy-docker.sh --host-dir /var/lib/bishon \
+    bash deploy-docker.sh --host-dir /var/lib/bishon \
         --release r.tar.gz --image bishon-cuda-image-2.2.0.tar
 
   Dry-run to see what would be invoked:
-    bash bishon-deploy-docker.sh --host-dir /tmp/x --release r.tar.gz --pull --dry-run
+    bash deploy-docker.sh --host-dir /tmp/x --release r.tar.gz --pull --dry-run
 EOF
             exit 0 ;;
         *) INSTALL_ARGS+=("$1"); shift ;;
@@ -87,22 +87,22 @@ if $DRY_RUN; then
     log "=== DRY RUN: docker deployment ==="
     log "host-dir: $HOST_DIR"
     log "release:  $RELEASE_TAR"
-    log "would call: bishon-install.sh ${INSTALL_ARGS[*]}"
+    log "would call: install.sh ${INSTALL_ARGS[*]}"
     if $START_AFTER; then
-        log "would call: bishon-start.sh --host-dir $HOST_DIR"
+        log "would call: start.sh --host-dir $HOST_DIR"
     fi
     exit 0
 fi
 
 log "=== Step 1/2: install ==="
-bash "$(dirname "$0")/bishon-install.sh" "${INSTALL_ARGS[@]}"
+bash "$(dirname "$0")/install.sh" "${INSTALL_ARGS[@]}"
 
 if $START_AFTER; then
     log "=== Step 2/2: start ==="
-    bash "$(dirname "$0")/bishon-start.sh" --host-dir "$HOST_DIR"
+    bash "$(dirname "$0")/start.sh" --host-dir "$HOST_DIR"
 fi
 
 log "=== Docker deployment complete ==="
 log "Service: http://localhost:8777/bishon/"
 log "Health:  http://localhost:8777/api/health"
-log "Stop:    bash $(dirname "$0")/bishon-stop.sh --host-dir $HOST_DIR"
+log "Stop:    bash $(dirname "$0")/stop.sh --host-dir $HOST_DIR"

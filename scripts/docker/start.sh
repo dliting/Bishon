@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bishon-start.sh — start the Bishon V2 container on an installed host.
+# start.sh — start the Bishon V2 container on an installed host.
 #
 # Usage:
-#   bash bishon-start.sh --host-dir <dir>
+#   bash start.sh --host-dir <dir>
 #
 # Reads the installed image tag from $HOST_DIR/.image-tag (written by install).
 # Restarts cleanly if a same-name container already exists.
@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
         --host-dir) HOST_DIR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-bishon-start.sh — Start the Bishon V2 container.
+start.sh — Start the Bishon V2 container.
 
 Reads .image-tag and .accelerator from <host-dir>, runs the container with
 -v <host-dir>:/opt/bishon-data + --env-file <host-dir>/.env + GPU flags,
@@ -25,7 +25,7 @@ USAGE
   bash $0 --host-dir <dir>
 
 FLAGS
-  --host-dir <dir>   Directory created by bishon-install.sh. Must contain
+  --host-dir <dir>   Directory created by install.sh. Must contain
                      .image-tag, .accelerator (optional, defaults to cuda),
                      and .env.
 
@@ -47,7 +47,7 @@ log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
-[ -f "$HOST_DIR/.image-tag" ] || die "$HOST_DIR/.image-tag missing. Run bishon-install.sh first."
+[ -f "$HOST_DIR/.image-tag" ] || die "$HOST_DIR/.image-tag missing. Run install.sh first."
 
 IMAGE="$(cat "$HOST_DIR/.image-tag")"
 ACC="$(cat "$HOST_DIR/.accelerator" 2>/dev/null || echo cuda)"
@@ -55,7 +55,7 @@ ACC="$(cat "$HOST_DIR/.accelerator" 2>/dev/null || echo cuda)"
 command -v docker >/dev/null || die "docker not found on PATH"
 command -v curl >/dev/null   || die "curl not found on PATH"
 
-[ -f "$HOST_DIR/.env" ] || die "$HOST_DIR/.env missing. Run bishon-install.sh first."
+[ -f "$HOST_DIR/.env" ] || die "$HOST_DIR/.env missing. Run install.sh first."
 
 # --- 1. Remove any same-name container ---------------------------------------
 if docker ps -a --format '{{.Names}}' | grep -qx bishon; then
@@ -120,7 +120,7 @@ for i in $(seq 1 90); do
         if [ "$http_code" != "200" ]; then
             dist_index="$HOST_DIR/bishon/bishon_kernel/bishon_server/dist/bishon/index.html"
             if [ ! -f "$dist_index" ]; then
-                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm ci && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + bishon-publish.sh."
+                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm ci && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + publish.sh."
             fi
             die "/bishon/ returned HTTP $http_code despite $dist_index existing. Check container logs: docker logs bishon"
         fi

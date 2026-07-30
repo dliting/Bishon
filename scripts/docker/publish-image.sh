@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# scripts/docker/bishon-publish-image.sh
+# scripts/docker/publish-image.sh
 #
 # Push the locally-built bishon-cuda:<ver> image to one or both registries.
-# Manual trigger (no CI auto-push); run after bishon-build.sh whenever the
+# Manual trigger (no CI auto-push); run after build.sh whenever the
 # image content changes (Dockerfile, entrypoint.sh, or apt/conda versions).
 #
 # Default: pushes to both ghcr.io and Aliyun.
 #
 # Usage:
-#   bash bishon-publish-image.sh                       # push to both
-#   bash bishon-publish-image.sh --registry ghcr       # only ghcr
-#   bash bishon-publish-image.sh --registry aliyun     # only aliyun
-#   bash bishon-publish-image.sh --vpc                 # aliyun via VPC endpoint
-#   bash bishon-publish-image.sh --tag 2.2.0-rc1       # override VERSION file
-#   bash bishon-publish-image.sh --no-latest           # don't tag :latest
+#   bash publish-image.sh                       # push to both
+#   bash publish-image.sh --registry ghcr       # only ghcr
+#   bash publish-image.sh --registry aliyun     # only aliyun
+#   bash publish-image.sh --vpc                 # aliyun via VPC endpoint
+#   bash publish-image.sh --tag 2.2.0-rc1       # override VERSION file
+#   bash publish-image.sh --no-latest           # don't tag :latest
 #
 # Auth (one-time per machine; persists in ~/.docker/config.json):
 #   docker login ghcr.io -u dliting --password-stdin <<< "$GHCR_TOKEN"
@@ -70,7 +70,7 @@ fi
 LOCAL_IMAGE="bishon-cuda:$TAG"
 log "looking for local image: $LOCAL_IMAGE"
 docker image inspect "$LOCAL_IMAGE" >/dev/null 2>&1 || \
-    die "$LOCAL_IMAGE not built. Run: bishon-build.sh"
+    die "$LOCAL_IMAGE not built. Run: build.sh"
 
 # Choose aliyun endpoint
 if $ALIYUN_USE_VPC; then

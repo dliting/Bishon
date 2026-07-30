@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/docker/bishon-deploy.sh
+# scripts/docker/deploy.sh
 #
 # L3 wizard: top-level deployment orchestrator. Asks the user (or accepts
 # CLI flags / saved config) which deployment mode to use, then dispatches
@@ -11,10 +11,10 @@
 #   bare-metal      No Docker; run uvicorn directly with the bishon conda env.
 #
 # Usage (interactive):
-#   bash bishon-deploy.sh
+#   bash deploy.sh
 #
 # Usage (non-interactive):
-#   bash bishon-deploy.sh --non-interactive \
+#   bash deploy.sh --non-interactive \
 #       --mode docker-online --host-dir /var/lib/bishon \
 #       --release /path/to/release.tar.gz \
 #       --registry aliyun --models-source online
@@ -80,7 +80,7 @@ while [[ $# -gt 0 ]]; do
         --bundle-dir)      BUNDLE_DIR="$2"; shift 2 ;;
         --help|-h)
             cat <<'EOF'
-bishon-deploy.sh — Interactive deployment wizard for Bishon V2.
+deploy.sh — Interactive deployment wizard for Bishon V2.
 
 Three modes:
   docker-online   Pull image from ghcr.io / Aliyun, run in Docker. (Recommended.)
@@ -88,8 +88,8 @@ Three modes:
   bare-metal      Run uvicorn directly with the bishon conda env. (No Docker.)
 
 USAGE
-  bash bishon-deploy.sh                              # interactive
-  bash bishon-deploy.sh --non-interactive [flags...] # CI / batch deploy
+  bash deploy.sh                              # interactive
+  bash deploy.sh --non-interactive [flags...] # CI / batch deploy
 
 FLAGS (every interactive question has a corresponding flag)
   --mode <m>             Deployment mode (docker-online|docker-offline|bare-metal).
@@ -128,21 +128,21 @@ PLATFORM DETECTION
 
 EXAMPLES
   Interactive wizard:
-    bash bishon-deploy.sh
+    bash deploy.sh
 
   Non-interactive Docker pull from Aliyun, models online:
-    bash bishon-deploy.sh --non-interactive \
+    bash deploy.sh --non-interactive \
         --mode docker-online --host-dir /var/lib/bishon \
         --release bishon-release-2.2.0.tar.gz \
         --registry aliyun --models-source online
 
   Non-interactive bare-metal, no models, no pip reinstall:
-    bash bishon-deploy.sh --non-interactive \
+    bash deploy.sh --non-interactive \
         --mode bare-metal --source-dir /opt/Bishon/V2/dev \
         --models-source skip
 
   Dry-run (no side effects, prints plan):
-    bash bishon-deploy.sh --non-interactive --dry-run \
+    bash deploy.sh --non-interactive --dry-run \
         --mode docker-offline --host-dir /var/lib/bishon \
         --release r.tar.gz --image i.tar
 EOF
@@ -290,7 +290,7 @@ if [ "$PLATFORM" = "windows" ] && ! $NATIVE_WINDOWS; then
          Open a WSL2 Ubuntu 22.04 terminal and run this script there:
            wsl -d Ubuntu-22.04
            cd /mnt/i/Bishon/V2/dev
-           bash scripts/docker/bishon-deploy.sh
+           bash scripts/docker/deploy.sh
 
          To force native-Windows continuation anyway: --native-windows
 EOF
@@ -452,7 +452,7 @@ case "$MODE" in
         else
             IMAGE_SOURCE="${IMAGE_SOURCE:-load}"
             [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask_path \
-                "image tarball path? (from bishon-build.sh + docker save)" \
+                "image tarball path? (from build.sh + docker save)" \
                 "$IMAGE_TAR")
         fi
 
@@ -546,7 +546,7 @@ fi
 if ! $DRY_RUN && $SAVE_CONFIG && [ -n "$HOST_DIR" ]; then
     CONF="$HOST_DIR/deploy.conf"
     cat > "$CONF" <<EOF
-# Auto-saved by bishon-deploy.sh $(date -Iseconds 2>/dev/null || echo "")
+# Auto-saved by deploy.sh $(date -Iseconds 2>/dev/null || echo "")
 MODE="$MODE"
 HOST_DIR="$HOST_DIR"
 RELEASE_TAR="$RELEASE_TAR"
@@ -597,7 +597,7 @@ case "$MODE" in
         [ -n "$TAG" ] && DEPLOY_ARGS+=(--tag "$TAG")
         if [ "$MODELS_SOURCE" = "tarball" ]; then DEPLOY_ARGS+=(--models "$MODELS_TAR"); fi
         if [ "$MODELS_SOURCE" = "directory" ]; then DEPLOY_ARGS+=(--models-dir "$MODELS_DIR"); fi
-        bash "$SCRIPT_DIR/bishon-deploy-docker.sh" "${DEPLOY_ARGS[@]}"
+        bash "$SCRIPT_DIR/deploy-docker.sh" "${DEPLOY_ARGS[@]}"
         ;;
     bare-metal)
         BM_ARGS=(--source-dir "$SOURCE_DIR" --conda-env "$CONDA_ENV"
@@ -605,6 +605,6 @@ case "$MODE" in
         if $INSTALL_DEPS; then BM_ARGS+=(--install-deps); fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then BM_ARGS+=(--models "$MODELS_TAR"); fi
         if [ "$MODELS_SOURCE" = "directory" ]; then BM_ARGS+=(--models-dir "$MODELS_DIR"); fi
-        bash "$SCRIPT_DIR/bishon-deploy-bare-metal.sh" "${BM_ARGS[@]}"
+        bash "$SCRIPT_DIR/deploy-bare-metal.sh" "${BM_ARGS[@]}"
         ;;
 esac

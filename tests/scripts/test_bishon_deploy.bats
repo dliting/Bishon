@@ -15,21 +15,21 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 # L3 wizard
 # ---------------------------------------------------------------------------
 
-@test "bishon-deploy.sh exists and is executable" {
-    [ -f "$REPO_ROOT/scripts/docker/bishon-deploy.sh" ]
+@test "deploy.sh exists and is executable" {
+    [ -f "$REPO_ROOT/scripts/docker/deploy.sh" ]
 }
 
-@test "bishon-deploy.sh passes bash -n" {
-    run bash -n "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
+@test "deploy.sh passes bash -n" {
+    run bash -n "$REPO_ROOT/scripts/docker/deploy.sh"
     [ "$status" -eq 0 ]
 }
 
-@test "bishon-deploy.sh has set -euo pipefail" {
-    grep -qE '^set -euo pipefail' "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
+@test "deploy.sh has set -euo pipefail" {
+    grep -qE '^set -euo pipefail' "$REPO_ROOT/scripts/docker/deploy.sh"
 }
 
 @test "--help exits 0 and lists modes" {
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" --help
+    run bash "$REPO_ROOT/scripts/docker/deploy.sh" --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"docker-online"* ]]
     [[ "$output" == *"docker-offline"* ]]
@@ -37,7 +37,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 }
 
 @test "--non-interactive docker-online --dry-run prints summary without executing" {
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy.sh" \
         --non-interactive --dry-run --no-save-config \
         --mode docker-online --host-dir /tmp/bats-deploy-$$ \
         --release /tmp/nope.tar.gz --registry aliyun \
@@ -50,7 +50,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 }
 
 @test "--non-interactive docker-offline --dry-run includes --image" {
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy.sh" \
         --non-interactive --dry-run --no-save-config \
         --mode docker-offline --host-dir /tmp/bats-deploy-$$ \
         --release /tmp/nope.tar.gz --image /tmp/nope-img.tar \
@@ -61,7 +61,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 }
 
 @test "--non-interactive bare-metal --dry-run shows source-dir + conda env" {
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy.sh" \
         --non-interactive --dry-run --no-save-config \
         --mode bare-metal --source-dir "$REPO_ROOT" \
         --conda-env /tmp/fake-env --models-source skip
@@ -71,7 +71,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 }
 
 @test "unknown --mode exits non-zero" {
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy.sh" \
         --non-interactive --dry-run --no-save-config \
         --mode bogus --host-dir /tmp/x --release /tmp/x.tar.gz
     [ "$status" -ne 0 ]
@@ -82,27 +82,27 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 # ---------------------------------------------------------------------------
 
 @test "deploy-docker.sh syntax OK" {
-    run bash -n "$REPO_ROOT/scripts/docker/bishon-deploy-docker.sh"
+    run bash -n "$REPO_ROOT/scripts/docker/deploy-docker.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "deploy-bare-metal.sh syntax OK" {
-    run bash -n "$REPO_ROOT/scripts/docker/bishon-deploy-bare-metal.sh"
+    run bash -n "$REPO_ROOT/scripts/docker/deploy-bare-metal.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "deploy-docker.sh --dry-run prints would-call summary" {
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy-docker.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy-docker.sh" \
         --host-dir /tmp/bats-x --release /tmp/nope.tar.gz --pull --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"would call: bishon-install.sh"* ]]
-    [[ "$output" == *"would call: bishon-start.sh"* ]]
+    [[ "$output" == *"would call: install.sh"* ]]
+    [[ "$output" == *"would call: start.sh"* ]]
 }
 
 @test "deploy-bare-metal.sh --dry-run auto-detects conda env on WSL" {
     # Only meaningful on WSL/Linux where /opt/miniconda3/envs/bishon exists.
     [ -x /opt/miniconda3/envs/bishon/bin/python ] || skip "bishon env not present"
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy-bare-metal.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy-bare-metal.sh" \
         --source-dir "$REPO_ROOT" --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"conda env:"* ]]
@@ -116,7 +116,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 @test "wizard refuses on native Windows without --native-windows" {
     # Simulate Windows by setting uname output. We can't easily do that in
     # bats, but we can verify the check exists in the source.
-    grep -q "MINGW\|MSYS\|CYGWIN" "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
+    grep -q "MINGW\|MSYS\|CYGWIN" "$REPO_ROOT/scripts/docker/deploy.sh"
 }
 
 # ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
     tmp="$(mktemp -d)"
     # Default behavior saves config; --no-save-config prevents it. Verify
     # both branches exist by grepping the source.
-    grep -q "deploy.conf" "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
+    grep -q "deploy.conf" "$REPO_ROOT/scripts/docker/deploy.sh"
     rm -rf "$tmp"
 }
 
@@ -136,7 +136,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 @test "I1 regression: dry-run without --no-save-config does NOT write deploy.conf" {
     tmp="$(mktemp -d)"
     # Without --no-save-config, default would have saved; dry-run must skip.
-    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" \
+    run bash "$REPO_ROOT/scripts/docker/deploy.sh" \
         --non-interactive --dry-run \
         --mode docker-online --host-dir "$tmp" \
         --release /tmp/nope.tar.gz --registry ghcr \
@@ -152,5 +152,5 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 # in source and is reachable. Full end-to-end covered by interactive testing.)
 @test "save-config block in wizard source has correct dry-run guard" {
     # The save block must be guarded by `if ! $DRY_RUN && $SAVE_CONFIG ...`
-    grep -E 'if ! \$DRY_RUN && \$SAVE_CONFIG' "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
+    grep -E 'if ! \$DRY_RUN && \$SAVE_CONFIG' "$REPO_ROOT/scripts/docker/deploy.sh"
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bishon-build.sh — build the Bishon V2 container image.
+# build.sh — build the Bishon V2 container image.
 #
 # Usage:
-#   bash scripts/docker/bishon-build.sh --version <ver> [--accelerator cuda]
+#   bash scripts/docker/build.sh --version <ver> [--accelerator cuda]
 #
 # Output:
 #   Image tagged `bishon-<accelerator>:<version>`, e.g. bishon-cuda:2.1.0.
@@ -67,7 +67,7 @@ docker build \
     "$REPO_ROOT/docker"
 
 # Tag as latest so CI/automation scripts can always pull :latest
-# without parsing version numbers. bishon-install.sh still pins to a
+# without parsing version numbers. install.sh still pins to a
 # specific version via .image-tag; :latest is for human/CI convenience.
 docker rmi "bishon-$ACC:latest" 2>/dev/null || true
 docker tag "$IMAGE" "bishon-$ACC:latest"

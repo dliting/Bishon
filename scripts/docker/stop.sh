@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# bishon-stop.sh — stop and remove the Bishon V2 container.
+# stop.sh — stop and remove the Bishon V2 container.
 #
 # Usage:
-#   bash bishon-stop.sh --host-dir <dir>
+#   bash stop.sh --host-dir <dir>
 #
 # Idempotent: no-op if no container exists. Image is preserved (use
-# bishon-uninstall.sh to remove the image).
+# uninstall.sh to remove the image).
 
 set -euo pipefail
 
@@ -15,16 +15,16 @@ while [[ $# -gt 0 ]]; do
         --host-dir) HOST_DIR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-bishon-stop.sh — Stop and remove the Bishon V2 container.
+stop.sh — Stop and remove the Bishon V2 container.
 
 Idempotent: no-op if no container exists. Image and <host-dir> data are
-preserved. Use bishon-uninstall.sh to remove the image or data.
+preserved. Use uninstall.sh to remove the image or data.
 
 USAGE
   bash $0 --host-dir <dir>
 
 FLAGS
-  --host-dir <dir>   The directory passed to bishon-install.sh.
+  --host-dir <dir>   The directory passed to install.sh.
 
 EXAMPLES
   bash $0 --host-dir /var/lib/bishon

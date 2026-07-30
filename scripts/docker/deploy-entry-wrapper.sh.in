@@ -8,4 +8,4 @@
 # models tarballs in the same directory.
 set -euo pipefail
 cd "$(dirname "$0")"
-exec bash scripts/bishon-deploy.sh "$@"
+exec bash scripts/deploy.sh "$@"

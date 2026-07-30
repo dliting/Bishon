@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bishon-install.sh — first-time install of Bishon V2 on a deploy host.
+# install.sh — first-time install of Bishon V2 on a deploy host.
 #
 # Usage:
-#   bash bishon-install.sh \
+#   bash install.sh \
 #       --host-dir <dir>          # where state lives (must be ext4 in WSL/Linux)
 #       --release <release.tar.gz>
 #       --image <image.tar>        # from docker save
@@ -12,7 +12,7 @@
 #   - .env (only created if missing)
 #   - BISHON_DB/  (all runtime data)
 #   - logs/
-# For an in-place code-only upgrade use bishon-publish.sh instead.
+# For an in-place code-only upgrade use publish.sh instead.
 
 set -euo pipefail
 
@@ -231,5 +231,5 @@ Next steps:
   1. Edit $HOST_DIR/.env — set OPENAI_API_BASE and EMBEDDING_API_BASE to
      explicit reachable URLs (NOT host.docker.internal).
   2. Start the service:
-       bash $HOST_DIR/scripts/bishon-start.sh --host-dir $HOST_DIR
+       bash $HOST_DIR/scripts/start.sh --host-dir $HOST_DIR
 EOF

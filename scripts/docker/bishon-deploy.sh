@@ -352,7 +352,9 @@ if [ -n "$BUNDLE_DIR" ]; then
     glob_bundle IMAGE_TAR   'bishon-cuda-image-*.tar' 'image tarball'
     glob_bundle MODELS_TAR  'bishon-models-*.tar.gz'  'models tarball'
     # If models tarball detected, switch default models-source to tarball.
-    [ -n "$MODELS_TAR" ] && [ -z "$MODELS_SOURCE" ] && MODELS_SOURCE="tarball"
+    if [ -n "$MODELS_TAR" ] && [ -z "$MODELS_SOURCE" ]; then
+        MODELS_SOURCE="tarball"
+    fi
 else
     glob_bundle() { : ; }  # no-op when no bundle dir
 fi

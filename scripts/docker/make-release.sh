@@ -21,24 +21,37 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 VERSION=""
 CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
-SRC_ONLY=false
+OUTPUT_DIR=""           # default: $REPO_ROOT/dist
+SKIP_ENV=false
+SKIP_MODELS=false
+SKIP_IMAGE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version)    VERSION="$2";    shift 2 ;;
-        --conda-root) CONDA_ROOT="$2"; shift 2 ;;
-        --src-only)   SRC_ONLY=true;   shift ;;
+        --version)     VERSION="$2";    shift 2 ;;
+        --conda-root)  CONDA_ROOT="$2"; shift 2 ;;
+        --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
+        --src-only)    SKIP_ENV=true; SKIP_MODELS=true; SKIP_IMAGE=true; shift ;;
+        --skip-env)    SKIP_ENV=true;   shift ;;
+        --skip-models) SKIP_MODELS=true; shift ;;
+        --skip-image)  SKIP_IMAGE=true; shift ;;
         -h|--help)
             cat <<EOF
-Usage: $0 [--version <ver>] [--conda-root /opt/miniconda3] [--src-only]
+Usage: $0 [--version <ver>] [--conda-root /opt/miniconda3] [flags]
 
+SOURCE
   --version <ver>      Image and release tarball version, e.g. 2.1.0.
                        Default: read from VERSION file in repo root.
   --conda-root <path>  Path to miniconda3 installation (def: /opt/miniconda3).
-  --src-only           Package source + scripts only; skip python-env, models,
-                       and the docker image tar. Fast (~5s) for quick publish
-                       testing when only code changed.
+  --output-dir <path>  Where release artifacts go (default: <repo>/dist).
 
-Outputs (under dist/):
+COMPONENT SELECTION (all included by default)
+  --skip-env           Skip the python-env (conda env copy ~7 GB).
+  --skip-models        Skip models (Qwen3-Reranker + PaddleOCR ~2.5 GB).
+  --skip-image         Skip the docker image tar (~3 GB).
+  --src-only           Shorthand for --skip-env --skip-models --skip-image.
+                       ~5s for quick publish testing when only code changed.
+
+Outputs (under --output-dir / default dist/):
   bishon-release-<ver>.tar.gz        source + env + models + scripts
   bishon-models-<ver>.tar.gz         models only (for install/upgrade reuse)
   bishon-cuda-image-<ver>.tar        docker save tarball
@@ -58,9 +71,9 @@ if [ -z "$VERSION" ]; then
 fi
 
 ENV_SRC="$CONDA_ROOT/envs/bishon"
-DIST="$REPO_ROOT/dist/release-$VERSION"
-# All tarballs live inside the bundle dir so the operator copies one directory
-# and everything (entry script + tarballs + checksums) is in one place.
+[ -n "$OUTPUT_DIR" ] || OUTPUT_DIR="$REPO_ROOT/dist"
+mkdir -p "$OUTPUT_DIR"
+DIST="$OUTPUT_DIR/release-$VERSION"
 DIST_TGZ="$DIST/bishon-release-$VERSION.tar.gz"
 MODELS_TGZ="$DIST/bishon-models-$VERSION.tar.gz"
 IMAGE_TAR="$DIST/bishon-cuda-image-$VERSION.tar"
@@ -75,7 +88,9 @@ die() { bishon_die "$@"; }
 
 # --- 0. Pre-flight checks (delegates to scripts/docker/preflight.sh) ---------
 PREFLIGHT_ARGS=(--version "$VERSION")
-$SRC_ONLY && PREFLIGHT_ARGS+=(--src-only)
+if $SKIP_ENV && $SKIP_MODELS && $SKIP_IMAGE; then
+    PREFLIGHT_ARGS+=(--src-only)
+fi
 bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
     die "preflight failed. Fix the issues above before running make-release.sh."
 
@@ -84,11 +99,10 @@ bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
 log "staging at $DIST"
 rm -rf "$DIST"
 mkdir -p "$DIST"
-mkdir -p "$REPO_ROOT/dist"
 
-# --- 2. python-env (one env, slim) — skipped in --src-only ------------------
-if $SRC_ONLY; then
-    log "--src-only: skipping python-env"
+# --- 2. python-env (one env, slim) — skip with --skip-env / --src-only ------
+if $SKIP_ENV; then
+    log "skipping python-env (--skip-env)"
     mkdir -p "$DIST/python-env"  # empty placeholder so tarball has the dir
 else
     log "copying python-env (~$(du -sh "$ENV_SRC" | cut -f1))"
@@ -131,8 +145,8 @@ done < <(bishon_parse_manifest "$MANIFEST")
 # Models (~2.5 GB) change infrequently; shipping them in the main tarball
 # forces every deploy to download them. Instead, produce a standalone
 # models tarball that install.sh --models can optionally consume.
-if $SRC_ONLY; then
-    log "--src-only: skipping models"
+if $SKIP_MODELS; then
+    log "skipping models (--skip-models)"
 else
     log "copying models (~$(du -sh "$REPO_ROOT/models" 2>/dev/null | cut -f1 || echo '?'))"
     mkdir -p "$DIST/models"
@@ -169,7 +183,7 @@ cp "$REPO_ROOT/VERSION" "$DIST/"
 # --- 6. Main tarball ---------------------------------------------------------
 # Write the tarball outside $DIST/ then mv it in, so tar doesn't see its own
 # output being created (avoids "file changed as we read it" warnings).
-TMP_TGZ="$REPO_ROOT/dist/bishon-release-$VERSION.tar.gz.tmp"
+TMP_TGZ="$OUTPUT_DIR/bishon-release-$VERSION.tar.gz.tmp"
 log "creating $DIST_TGZ (~this step is slow due to gzip)"
 tar -czf "$TMP_TGZ" -C "$DIST" \
     --exclude 'bishon-models-*.tar.gz'        \
@@ -180,8 +194,8 @@ mv "$TMP_TGZ" "$DIST_TGZ"
 (cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")
 
 # --- 7. Image tar (skipped in --src-only) ------------------------------------
-if $SRC_ONLY; then
-    log "--src-only: skipping docker image tar"
+if $SKIP_IMAGE; then
+    log "skipping docker image tar (--skip-image)"
 else
     log "exporting image to $IMAGE_TAR (docker save)"
     docker save "$IMAGE_TAG" -o "$IMAGE_TAR"
@@ -191,9 +205,11 @@ fi
 log "done. Artifacts:"
 log "  $DIST_TGZ       ($(du -h "$DIST_TGZ" | cut -f1))"
 log "  $DIST_TGZ.sha256"
-if ! $SRC_ONLY; then
+if ! $SKIP_MODELS; then
     log "  $MODELS_TGZ     ($(du -h "$MODELS_TGZ" | cut -f1))"
     log "  $MODELS_TGZ.sha256"
+fi
+if ! $SKIP_IMAGE; then
     log "  $IMAGE_TAR      ($(du -h "$IMAGE_TAR" | cut -f1))"
 fi
 log ""

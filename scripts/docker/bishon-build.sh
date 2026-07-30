@@ -69,6 +69,7 @@ docker build \
 # Tag as latest so CI/automation scripts can always pull :latest
 # without parsing version numbers. bishon-install.sh still pins to a
 # specific version via .image-tag; :latest is for human/CI convenience.
+docker rmi "bishon-$ACC:latest" 2>/dev/null || true
 docker tag "$IMAGE" "bishon-$ACC:latest"
 
 log "Built $IMAGE (+ tagged bishon-$ACC:latest)"

@@ -174,8 +174,8 @@ trap 'rm -rf "$TMP"' EXIT
 log "extracting $RELEASE_TAR ..."
 tar -xzf "$RELEASE_TAR" -C "$TMP"
 
-[ -d "$TMP/python-env/bin" ] || \
-    die "release tarball missing python-env/bin"
+[ -d "$TMP/python-env/bin" ] || [ -f "$TMP/python-env/.skip-env" ] || \
+    die "release tarball missing python-env/bin (use --skip-env in make-release.sh to package source-only)"
 [ -d "$TMP/bishon/bishon_kernel" ] || \
     die "release tarball missing bishon/bishon_kernel"
 [ -f "$TMP/bishon/bishon_kernel/bishon_server/dist/bishon/index.html" ] || \

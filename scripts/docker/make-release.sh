@@ -30,7 +30,6 @@ while [[ $# -gt 0 ]]; do
         --version)     VERSION="$2";    shift 2 ;;
         --conda-root)  CONDA_ROOT="$2"; shift 2 ;;
         --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
-        --src-only)    SKIP_ENV=true; SKIP_MODELS=true; SKIP_IMAGE=true; shift ;;
         --skip-env)    SKIP_ENV=true;   shift ;;
         --skip-models) SKIP_MODELS=true; shift ;;
         --skip-image)  SKIP_IMAGE=true; shift ;;
@@ -48,8 +47,6 @@ COMPONENT SELECTION (all included by default)
   --skip-env           Skip the python-env (conda env copy ~7 GB).
   --skip-models        Skip models (Qwen3-Reranker + PaddleOCR ~2.5 GB).
   --skip-image         Skip the docker image tar (~3 GB).
-  --src-only           Shorthand for --skip-env --skip-models --skip-image.
-                       ~5s for quick publish testing when only code changed.
 
 Outputs (under --output-dir / default dist/):
   bishon-release-<ver>.tar.gz        source + env + models + scripts
@@ -100,10 +97,13 @@ log "staging at $DIST"
 rm -rf "$DIST"
 mkdir -p "$DIST"
 
-# --- 2. python-env (one env, slim) — skip with --skip-env / --src-only ------
+# --- 2. python-env (one env, slim) — skip with --skip-env ------------------
 if $SKIP_ENV; then
     log "skipping python-env (--skip-env)"
-    mkdir -p "$DIST/python-env"  # empty placeholder so tarball has the dir
+    mkdir -p "$DIST/python-env"
+    # Sentinel: install.sh checks for bin/ first; if missing, looks for this
+    # file to confirm the tarball is intentionally source-only.
+    echo "source-only release; python-env not included" > "$DIST/python-env/.skip-env"
 else
     log "copying python-env (~$(du -sh "$ENV_SRC" | cut -f1))"
     rsync -a \
@@ -193,7 +193,7 @@ tar -czf "$TMP_TGZ" -C "$DIST" \
 mv "$TMP_TGZ" "$DIST_TGZ"
 (cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")
 
-# --- 7. Image tar (skipped in --src-only) ------------------------------------
+# --- 7. Image tar — skip with --skip-image ----------------------------------
 if $SKIP_IMAGE; then
     log "skipping docker image tar (--skip-image)"
 else

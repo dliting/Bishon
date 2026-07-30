@@ -51,7 +51,9 @@ COMPONENT SELECTION (all included by default)
   --skip-image         Skip the docker image tar (~3 GB).
 
 EXISTING RELEASE DIR
-  --force              Overwrite an existing release-<ver>/ dir.
+  --force              Overwrite existing files in release-<ver>/ dir.
+                       Only updates changed files; previously-packaged
+                       tarballs not part of THIS run are left untouched.
                        Without --force, the script refuses to run if the
                        output directory already exists.
 
@@ -101,13 +103,8 @@ bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
 # --- 1. Stage directory ------------------------------------------------------
 
 log "staging at $DIST"
-if [ -d "$DIST" ]; then
-    if $FORCE; then
-        log "--force: removing existing $DIST"
-        rm -rf "$DIST"
-    else
-        die "$DIST already exists. Use --force to overwrite."
-    fi
+if [ -d "$DIST" ] && ! $FORCE; then
+    die "$DIST already exists. Use --force to overwrite (rsync — only changed files are replaced)."
 fi
 mkdir -p "$DIST"
 

@@ -46,6 +46,7 @@ REGISTRY="ghcr"
 TAG=""
 MODELS_SOURCE=""       # online | tarball | skip
 MODELS_TAR=""
+MODELS_DIR=""
 SOURCE_DIR=""
 CONDA_ENV=""
 INSTALL_DEPS=false
@@ -69,6 +70,7 @@ while [[ $# -gt 0 ]]; do
         --tag)             TAG="$2"; shift 2 ;;
         --models-source)   MODELS_SOURCE="$2"; shift 2 ;;
         --models)          MODELS_TAR="$2"; MODELS_SOURCE="tarball"; shift 2 ;;
+        --models-dir)      MODELS_DIR="$2"; MODELS_SOURCE="directory"; shift 2 ;;
         --source-dir)      SOURCE_DIR="$2"; shift 2 ;;
         --conda-env)       CONDA_ENV="$2"; shift 2 ;;
         --install-deps)    INSTALL_DEPS=true; shift ;;
@@ -103,6 +105,7 @@ FLAGS (every interactive question has a corresponding flag)
   --tag <ver>            Image tag. Default: read from VERSION file.
   --models-source <s>    online (hf-mirror.com + paddleocr auto) | tarball | skip.
   --models <tar.gz>      Local models tarball (when --models-source tarball).
+  --models-dir <dir>     Path to existing models/ dir (when --models-source directory).
   --source-dir <path>    Bishon V2 repo root (bare-metal mode).
   --conda-env <path>     Path to bishon conda env (bare-metal; auto-detected if omitted).
   --install-deps         Re-run pip install -r requirements.txt (bare-metal).
@@ -152,32 +155,6 @@ export BISHON_LOG_TAG=deploy
 source "$SCRIPT_DIR/lib/common.sh"
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
-
-# --- adapt to bundle environment -------------------------------------------
-# When running from inside a deploy bundle (scripts/bishon-deploy.sh at
-# <bundle>/scripts/bishon-deploy.sh), REPO_ROOT computed as
-# $(dirname "$0")/../.. wrongly points to the bundle's parent. Detect that
-# and re-root to the bundle directory so VERSION, preflight source dir, etc.
-# resolve correctly.
-if [ -z "$BUNDLE_DIR" ]; then
-    for cand in "$PWD" "$(dirname "$SCRIPT_DIR")"; do
-        if ls "$cand"/bishon-release-*.tar.gz >/dev/null 2>&1; then
-            BUNDLE_DIR="$cand"
-            break
-        fi
-    done
-fi
-if [ -n "$BUNDLE_DIR" ]; then
-    # We're in a bundle. Use the bundle's bishon/ subdir (extracted source)
-    # as the source dir if it exists.
-    if [ -d "$BUNDLE_DIR/bishon/bishon_kernel" ]; then
-        BUNDLE_SOURCE_DIR="$BUNDLE_DIR/bishon"
-    fi
-    # Fallback: use bundle dir itself if it happens to be the source root.
-    [ -z "${BUNDLE_SOURCE_DIR:-}" ] && BUNDLE_SOURCE_DIR="$BUNDLE_DIR"
-else
-    BUNDLE_SOURCE_DIR=""
-fi
 
 # --- helpers ----------------------------------------------------------------
 ask() {
@@ -321,9 +298,11 @@ if [ -n "$LOAD_CONFIG" ] && [ -f "$LOAD_CONFIG" ]; then
 fi
 
 # --- environment detection (informs mode defaults) -------------------------
-# Look for a bundle dir. Check PWD first (operator cd'd into it), then the
-# parent of the script's own directory (useful when running from inside the
-# bundle's scripts/ subdirectory via deploy.sh wrapper).
+# --- bundle detection -----------------------------------------------------
+# Look for a deploy bundle dir: check $PWD (operator cd'd into it), then the
+# parent of the script's own directory (when running from inside the bundle's
+# scripts/ subdirectory via deploy.sh wrapper).
+# Sets BUNDLE_DIR, BUNDLE_SOURCE_DIR, and auto-globs release/image/models tarballs.
 if [ -z "$BUNDLE_DIR" ]; then
     for cand in "$PWD" "$(dirname "$SCRIPT_DIR")"; do
         if ls "$cand"/bishon-release-*.tar.gz >/dev/null 2>&1; then
@@ -333,9 +312,15 @@ if [ -z "$BUNDLE_DIR" ]; then
         fi
     done
 fi
-
-# Auto-glob from bundle dir if present (idempotent — overrides only empty vars).
 if [ -n "$BUNDLE_DIR" ]; then
+    # Use the bundle's bishon/ subdir (extracted source) for preflight checks.
+    if [ -d "$BUNDLE_DIR/bishon/bishon_kernel" ]; then
+        BUNDLE_SOURCE_DIR="$BUNDLE_DIR/bishon"
+    else
+        BUNDLE_SOURCE_DIR="$BUNDLE_DIR"
+    fi
+
+    # Re-define glob_bundle for the closed-over $BUNDLE_DIR context.
     glob_bundle() {
         local var="$1" pattern="$2" descr="$3"
         [ -n "${!var:-}" ] && return 0
@@ -462,14 +447,20 @@ case "$MODE" in
         if [ -z "$MODELS_SOURCE" ]; then
             MODELS_SOURCE=$(ask_choice \
                 "Models source?
-  online  = download Qwen3-Reranker (hf-mirror.com) + PaddleOCR (paddleocr auto)
-  tarball = extract from local bishon-models-*.tar.gz
-  skip    = install without models (Rerank off, OCR warns at startup)" \
-                "online tarball skip" "skip")
+  online    = download Qwen3-Reranker (hf-mirror.com) + PaddleOCR auto
+  tarball   = extract from local bishon-models-*.tar.gz
+  directory = use an existing models/ dir (symlink) [default: /opt/models]
+  skip      = install without models (Rerank off, OCR warns at startup)" \
+                "online tarball directory skip" "skip")
         fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then
             [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask_path \
                 "models tarball path? (from make-release.sh)" "$MODELS_TAR")
+        fi
+        if [ "$MODELS_SOURCE" = "directory" ]; then
+            [ -n "$MODELS_DIR" ] || MODELS_DIR=$(ask_path \
+                "models directory path? (existing dir with Qwen3-Reranker-0.6B/ and paddleocr_models/)" \
+                "${MODELS_DIR:-/opt/models}")
         fi
         ;;
 
@@ -492,14 +483,20 @@ case "$MODE" in
         if [ -z "$MODELS_SOURCE" ]; then
             MODELS_SOURCE=$(ask_choice \
                 "Models source?
-  online  = download Qwen3-Reranker (hf-mirror.com) + PaddleOCR (paddleocr auto)
-  tarball = extract from local bishon-models-*.tar.gz
-  skip    = no models (Rerank off, OCR warns at startup)" \
-                "online tarball skip" "skip")
+  online    = download Qwen3-Reranker (hf-mirror.com) + PaddleOCR auto
+  tarball   = extract from local bishon-models-*.tar.gz
+  directory = symlink an existing models/ dir [default: /opt/models]
+  skip      = no models (Rerank off, OCR warns at startup)" \
+                "online tarball directory skip" "skip")
         fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then
             [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask_path \
                 "models tarball path? (from make-release.sh)" "$MODELS_TAR")
+        fi
+        if [ "$MODELS_SOURCE" = "directory" ]; then
+            [ -n "$MODELS_DIR" ] || MODELS_DIR=$(ask_path \
+                "models directory path? (existing dir with models/ subdirs)" \
+                "${MODELS_DIR:-/opt/models}")
         fi
         ;;
 
@@ -514,14 +511,16 @@ case "$MODE" in
     docker-*) log "  host-dir:      $HOST_DIR"
               log "  release:       $RELEASE_TAR"
               log "  image source:  $IMAGE_SOURCE"
-              [ "$IMAGE_SOURCE" = "pull" ] && log "  registry:      $REGISTRY"
-              [ "$IMAGE_SOURCE" = "load" ] && [ -n "$IMAGE_TAR" ] && log "  image tar:     $IMAGE_TAR"
+              if [ "$IMAGE_SOURCE" = "pull" ]; then log "  registry:      $REGISTRY"; fi
+              if [ "$IMAGE_SOURCE" = "load" ] && [ -n "$IMAGE_TAR" ]; then
+                  log "  image tar:     $IMAGE_TAR"
+              fi
               ;;
     bare-metal) log "  source-dir:    $SOURCE_DIR"
                 log "  conda env:     $CONDA_ENV"
                 ;;
 esac
-log "  models source: $MODELS_SOURCE${MODELS_TAR:+ ($MODELS_TAR)}"
+log "  models source: $MODELS_SOURCE${MODELS_TAR:+ ($MODELS_TAR)}${MODELS_DIR:+ ($MODELS_DIR)}"
 
 if ! $NON_INTERACTIVE; then
     confirm=$(ask "proceed?" "y")
@@ -545,6 +544,7 @@ REGISTRY="$REGISTRY"
 TAG="$TAG"
 MODELS_SOURCE="$MODELS_SOURCE"
 MODELS_TAR="$MODELS_TAR"
+MODELS_DIR="$MODELS_DIR"
 SOURCE_DIR="$SOURCE_DIR"
 CONDA_ENV="$CONDA_ENV"
 INSTALL_DEPS="$INSTALL_DEPS"
@@ -558,6 +558,22 @@ if $DRY_RUN; then
     exit 0
 fi
 
+# Handle models directory: symlink it in before starting deployment.
+if [ "$MODELS_SOURCE" = "directory" ] && [ -d "$MODELS_DIR" ]; then
+    case "$MODE" in
+        docker-online|docker-offline)
+            rm -f "$HOST_DIR/models" 2>/dev/null || true
+            ln -sfn "$MODELS_DIR" "$HOST_DIR/models"
+            log "linked $HOST_DIR/models → $MODELS_DIR"
+            ;;
+        bare-metal)
+            rm -f "$SOURCE_DIR/models" 2>/dev/null || true
+            ln -sfn "$MODELS_DIR" "$SOURCE_DIR/models"
+            log "linked $SOURCE_DIR/models → $MODELS_DIR"
+            ;;
+    esac
+fi
+
 case "$MODE" in
     docker-online|docker-offline)
         DEPLOY_ARGS=(--host-dir "$HOST_DIR" --release "$RELEASE_TAR")
@@ -567,14 +583,16 @@ case "$MODE" in
             existing) DEPLOY_ARGS+=(--image-source existing) ;;
         esac
         [ -n "$TAG" ] && DEPLOY_ARGS+=(--tag "$TAG")
-        [ "$MODELS_SOURCE" = "tarball" ] && DEPLOY_ARGS+=(--models "$MODELS_TAR")
+        if [ "$MODELS_SOURCE" = "tarball" ]; then DEPLOY_ARGS+=(--models "$MODELS_TAR"); fi
+        if [ "$MODELS_SOURCE" = "directory" ]; then DEPLOY_ARGS+=(--models-dir "$MODELS_DIR"); fi
         bash "$SCRIPT_DIR/bishon-deploy-docker.sh" "${DEPLOY_ARGS[@]}"
         ;;
     bare-metal)
         BM_ARGS=(--source-dir "$SOURCE_DIR" --conda-env "$CONDA_ENV"
                  --models-source "$MODELS_SOURCE")
-        $INSTALL_DEPS && BM_ARGS+=(--install-deps)
-        [ "$MODELS_SOURCE" = "tarball" ] && BM_ARGS+=(--models "$MODELS_TAR")
+        if $INSTALL_DEPS; then BM_ARGS+=(--install-deps); fi
+        if [ "$MODELS_SOURCE" = "tarball" ]; then BM_ARGS+=(--models "$MODELS_TAR"); fi
+        if [ "$MODELS_SOURCE" = "directory" ]; then BM_ARGS+=(--models-dir "$MODELS_DIR"); fi
         bash "$SCRIPT_DIR/bishon-deploy-bare-metal.sh" "${BM_ARGS[@]}"
         ;;
 esac

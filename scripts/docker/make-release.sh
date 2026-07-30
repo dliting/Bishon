@@ -167,15 +167,16 @@ cp "$REPO_ROOT/.env.example" "$DIST/"
 cp "$REPO_ROOT/VERSION" "$DIST/"
 
 # --- 6. Main tarball ---------------------------------------------------------
-# Exclude other bundle artifacts (models tar, image tar, existing release tar)
-# so the main tarball carries only source+env+scripts.
+# Write the tarball outside $DIST/ then mv it in, so tar doesn't see its own
+# output being created (avoids "file changed as we read it" warnings).
+TMP_TGZ="$REPO_ROOT/dist/bishon-release-$VERSION.tar.gz.tmp"
 log "creating $DIST_TGZ (~this step is slow due to gzip)"
-tar -czf "$DIST_TGZ" -C "$DIST" \
-    --exclude 'bishon-models-*.tar.gz' \
-    --exclude 'bishon-cuda-image-*.tar' \
-    --exclude 'bishon-release-*.tar.gz' \
-    --exclude 'bishon-release-*.tar.gz.sha256' \
+tar -czf "$TMP_TGZ" -C "$DIST" \
+    --exclude 'bishon-models-*.tar.gz'        \
+    --exclude 'bishon-models-*.tar.gz.sha256' \
+    --exclude 'bishon-cuda-image-*.tar'       \
     .
+mv "$TMP_TGZ" "$DIST_TGZ"
 (cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")
 
 # --- 7. Image tar (skipped in --src-only) ------------------------------------

@@ -23,6 +23,7 @@ RELEASE_TAR=""
 DRY_RUN=false
 START_AFTER=true
 INSTALL_ARGS=()
+MODELS_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

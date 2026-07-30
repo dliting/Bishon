@@ -170,6 +170,61 @@ ask() {
     fi
 }
 
+ask_required() {
+    # ask_required "prompt" "default" → prints non-empty user input. If user
+    # presses Enter with no input AND no default is given, prompts again
+    # (interactive mode only). Non-interactive with empty default → die.
+    local prompt="$1" default="${2:-}" reply
+    if $NON_INTERACTIVE; then
+        if [ -z "$default" ]; then
+            die "ask_required: $prompt (no default and --non-interactive)"
+        fi
+        echo "$default"
+        return
+    fi
+    while true; do
+        if [ -n "$default" ]; then
+            read -rp "$prompt [$default] " reply
+            reply="${reply:-$default}"
+        else
+            read -rp "$prompt " reply
+        fi
+        [ -n "$reply" ] && { echo "$reply"; return; }
+        echo "  (required, please enter a value)" >&2
+    done
+}
+
+ask_path() {
+    # ask_path "prompt" "default" → like ask_required, but also verifies the
+    # path exists on disk. Loops on missing paths in interactive mode.
+    local prompt="$1" default="${2:-}" reply
+    if $NON_INTERACTIVE; then
+        if [ -z "$default" ]; then
+            die "ask_path: $prompt (no default and --non-interactive)"
+        fi
+        [ -e "$default" ] || die "ask_path: $default does not exist"
+        echo "$default"
+        return
+    fi
+    while true; do
+        if [ -n "$default" ]; then
+            read -rp "$prompt [$default] " reply
+            reply="${reply:-$default}"
+        else
+            read -rp "$prompt " reply
+        fi
+        if [ -z "$reply" ]; then
+            echo "  (required)" >&2
+            continue
+        fi
+        if [ -e "$reply" ]; then
+            echo "$reply"
+            return
+        fi
+        echo "  path not found: $reply — try again" >&2
+    done
+}
+
 ask_choice() {
     # ask_choice "prompt" "opt1 opt2 opt3" "default" → prints chosen option.
     local prompt="$1" opts="$2" default="${3:-}" reply
@@ -239,12 +294,68 @@ if [ -n "$LOAD_CONFIG" ] && [ -f "$LOAD_CONFIG" ]; then
     source "$LOAD_CONFIG"
 fi
 
+# --- environment detection (informs mode defaults) -------------------------
+# Look for a bundle dir. Check PWD first (operator cd'd into it), then the
+# parent of the script's own directory (useful when running from inside the
+# bundle's scripts/ subdirectory via deploy.sh wrapper).
+if [ -z "$BUNDLE_DIR" ]; then
+    for cand in "$PWD" "$(dirname "$SCRIPT_DIR")"; do
+        if ls "$cand"/bishon-release-*.tar.gz >/dev/null 2>&1; then
+            BUNDLE_DIR="$cand"
+            log "auto-detected bundle dir: $BUNDLE_DIR"
+            break
+        fi
+    done
+fi
+
+# Auto-glob from bundle dir if present (idempotent — overrides only empty vars).
+if [ -n "$BUNDLE_DIR" ]; then
+    glob_bundle() {
+        local var="$1" pattern="$2" descr="$3"
+        [ -n "${!var:-}" ] && return 0
+        local matches
+        matches=$(ls "$BUNDLE_DIR"/$pattern 2>/dev/null | sort)
+        case "$(echo "$matches" | wc -l)" in
+            1)  printf -v "$var" "%s" "$matches"
+                log "auto-detected $descr: ${!var}"
+                ;;
+            0|*) : ;;  # 0 → no match; >1 → ambiguous; both fall through to prompt
+        esac
+    }
+    glob_bundle RELEASE_TAR 'bishon-release-*.tar.gz' 'release tarball'
+    glob_bundle IMAGE_TAR   'bishon-cuda-image-*.tar' 'image tarball'
+    glob_bundle MODELS_TAR  'bishon-models-*.tar.gz'  'models tarball'
+    # If models tarball detected, switch default models-source to tarball.
+    [ -n "$MODELS_TAR" ] && [ -z "$MODELS_SOURCE" ] && MODELS_SOURCE="tarball"
+else
+    glob_bundle() { : ; }  # no-op when no bundle dir
+fi
+
+# Suggest default mode based on what's available:
+#   bundle in PWD + docker available → docker-offline
+#   no bundle + docker available      → docker-online
+#   no docker                          → bare-metal
+if [ -z "$MODE" ]; then
+    if [ -n "$BUNDLE_DIR" ]; then
+        DEFAULT_MODE="docker-offline"
+    elif command -v docker >/dev/null 2>&1; then
+        DEFAULT_MODE="docker-online"
+    else
+        DEFAULT_MODE="bare-metal"
+    fi
+else
+    DEFAULT_MODE="$MODE"
+fi
+
+# Default host-dir: ./bishon-data (next to wherever the operator is running).
+[ -z "$HOST_DIR" ] && HOST_DIR="./bishon-data"
+
 # --- preflight (informational; shows what's ready) --------------------------
 VERSION_FOR_PREFLIGHT="${TAG:-}"
 if [ -z "$VERSION_FOR_PREFLIGHT" ] && [ -f "$REPO_ROOT/VERSION" ]; then
     VERSION_FOR_PREFLIGHT="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
 fi
-MODE_FOR_PREFLIGHT="${MODE:-release}"
+MODE_FOR_PREFLIGHT="${DEFAULT_MODE}"
 log "=== preflight (informational; failures don't block) ==="
 bash "$SCRIPT_DIR/preflight.sh" --mode "$MODE_FOR_PREFLIGHT" \
     ${VERSION_FOR_PREFLIGHT:+--version "$VERSION_FOR_PREFLIGHT"} \
@@ -258,7 +369,7 @@ if [ -z "$MODE" ]; then
   docker-online   = pull image from ghcr.io / Aliyun, run in Docker (recommended)
   docker-offline  = load image from local tar, run in Docker (internal/air-gap)
   bare-metal      = run uvicorn directly, no Docker" \
-        "docker-online docker-offline bare-metal" "docker-online")
+        "docker-online docker-offline bare-metal" "$DEFAULT_MODE")
 fi
 log "mode: $MODE"
 
@@ -281,10 +392,9 @@ glob_bundle() {
 
 case "$MODE" in
     docker-online|docker-offline)
-        [ -n "$HOST_DIR" ] || HOST_DIR=$(ask \
+        [ -n "$HOST_DIR" ] || HOST_DIR=$(ask_required \
             "host-dir path? (where state lives; MUST be ext4 — SQLite WAL fails on 9p/drvfs)" \
             "$HOST_DIR")
-        [ -z "$HOST_DIR" ] && die "--host-dir required for $MODE"
         mkdir -p "$HOST_DIR"
 
         # For offline mode: try to auto-detect a "bundle dir" containing
@@ -305,9 +415,9 @@ case "$MODE" in
             glob_bundle MODELS_TAR  "$BUNDLE_DIR" 'bishon-models-*.tar.gz'  'models tarball'
         fi
 
-        [ -n "$RELEASE_TAR" ] || RELEASE_TAR=$(ask \
-            "release tarball path? (from make-release.sh; carries env + source)" "")
-        [ -z "$RELEASE_TAR" ] && die "--release required (run make-release.sh first)"
+        [ -n "$RELEASE_TAR" ] || RELEASE_TAR=$(ask_path \
+            "release tarball path? (from make-release.sh; carries env + source)" \
+            "$RELEASE_TAR")
 
         if [ "$MODE" = "docker-online" ]; then
             IMAGE_SOURCE="${IMAGE_SOURCE:-pull}"
@@ -321,9 +431,9 @@ case "$MODE" in
             fi
         else
             IMAGE_SOURCE="${IMAGE_SOURCE:-load}"
-            [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask \
-                "image tarball path? (from bishon-build.sh + docker save)" "")
-            [ -z "$IMAGE_TAR" ] && die "--image <tar> required for docker-offline"
+            [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask_path \
+                "image tarball path? (from bishon-build.sh + docker save)" \
+                "$IMAGE_TAR")
         fi
 
         if [ -z "$MODELS_SOURCE" ]; then
@@ -335,17 +445,16 @@ case "$MODE" in
                 "online tarball skip" "skip")
         fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then
-            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask \
+            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask_path \
                 "models tarball path? (from make-release.sh)" "$MODELS_TAR")
-            [ -z "$MODELS_TAR" ] && die "--models <tar> required with --models-source tarball"
         fi
         ;;
 
     bare-metal)
-        [ -n "$SOURCE_DIR" ] || SOURCE_DIR=$(ask \
-            "source repo path? (Bishon V2 repo root, containing bishon_kernel/)" "$REPO_ROOT")
-        [ -z "$SOURCE_DIR" ] && die "--source-dir required for bare-metal"
-        [ -d "$SOURCE_DIR/bishon_kernel" ] || die "$SOURCE_DIR is not a Bishon V2 repo"
+        [ -n "$SOURCE_DIR" ] || SOURCE_DIR=$(ask_path \
+            "source repo path? (Bishon V2 repo root, containing bishon_kernel/)" \
+            "${SOURCE_DIR:-$REPO_ROOT}")
+        [ -d "$SOURCE_DIR/bishon_kernel" ] || die "$SOURCE_DIR is not a Bishon V2 repo (no bishon_kernel/)"
 
         # Auto-detect conda env
         if [ -z "$CONDA_ENV" ]; then
@@ -353,9 +462,9 @@ case "$MODE" in
                 [ -x "$cand/bin/python" ] && CONDA_ENV="$cand" && break
             done
         fi
-        [ -n "$CONDA_ENV" ] || CONDA_ENV=$(ask \
-            "conda env path? (containing bin/python with all deps)" "")
-        [ -n "$CONDA_ENV" ] || die "could not locate bishon conda env; pass --conda-env"
+        [ -n "$CONDA_ENV" ] || CONDA_ENV=$(ask_path \
+            "conda env path? (containing bin/python with all deps)" \
+            "$CONDA_ENV")
 
         if [ -z "$MODELS_SOURCE" ]; then
             MODELS_SOURCE=$(ask_choice \
@@ -366,7 +475,7 @@ case "$MODE" in
                 "online tarball skip" "skip")
         fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then
-            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask \
+            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask_path \
                 "models tarball path? (from make-release.sh)" "$MODELS_TAR")
         fi
         ;;

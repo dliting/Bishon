@@ -140,9 +140,27 @@ else
     (cd "$(dirname "$MODELS_TGZ")" && sha256sum "$(basename "$MODELS_TGZ")" > "$(basename "$MODELS_TGZ").sha256")
 fi
 
-# --- 5. Top-level convenience copies for install.sh -------------------------
+# --- 5. Deploy bundle layout (self-contained, drop-in deployable) ------------
+# The operator copies the whole dist/release-<ver>/ directory and runs
+#   bash deploy.sh
+# from inside it. No need to remember script names, paths, or flags.
 mkdir -p "$DIST/scripts"
 cp -a "$REPO_ROOT/scripts/docker/." "$DIST/scripts/"
+rm -f "$DIST/scripts/deploy-entry-wrapper.sh.in"     # template, not needed at runtime
+
+# Render the one-line entry point at bundle root.
+cat > "$DIST/deploy.sh" <<'DEPLOY_SH'
+#!/usr/bin/env bash
+# deploy.sh — Bishon V2 deployment entry point.
+# Run from within the deploy bundle directory:
+#   bash deploy.sh
+# The wizard auto-detects bundle location and finds release/image/models
+# tarballs in the same directory.
+set -euo pipefail
+cd "$(dirname "$0")"
+exec bash scripts/bishon-deploy.sh "$@"
+DEPLOY_SH
+
 cp "$REPO_ROOT/.env.example" "$DIST/"
 
 # --- 6. Main tarball ---------------------------------------------------------
@@ -168,4 +186,7 @@ if ! $SRC_ONLY; then
     log "  $IMAGE_TAR      ($(du -h "$IMAGE_TAR" | cut -f1))"
 fi
 log ""
-log "Distribute these files to the deploy host. Then run bishon-install.sh."
+log ""
+log "Distribute the whole $DIST directory to the deploy host."
+log "On the deploy host, cd into it and run:"
+log "  bash deploy.sh"

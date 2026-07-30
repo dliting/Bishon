@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# deploy.sh — Bishon V2 deployment entry point.
+#
+# This wrapper sits at the root of a deploy bundle directory. Just run:
+#   bash deploy.sh
+#
+# The wizard auto-detects the bundle location and finds the release/image/
+# models tarballs in the same directory.
+set -euo pipefail
+cd "$(dirname "$0")"
+exec bash scripts/bishon-deploy.sh "$@"

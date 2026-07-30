@@ -19,7 +19,8 @@ ENV_SRC="$CONDA_ROOT/envs/bishon"
 VERSION=""
 SRC_ONLY=false
 MODE="release"   # release | docker-online | docker-offline | bare-metal
-SOURCE_DIR=""    # override REPO_ROOT for bundle-of-fline deploy preview
+SOURCE_DIR=""    # override REPO_ROOT for bundle offline deploy preview
+MODELS_DIR=""    # override models/ location (bundle has models at root, not inside source/)
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -27,6 +28,7 @@ while [[ $# -gt 0 ]]; do
         --src-only)   SRC_ONLY=true; shift ;;
         --mode)       MODE="$2"; shift 2 ;;
         --source-dir) SOURCE_DIR="$2"; shift 2 ;;
+        --models-dir) MODELS_DIR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
 Usage: $0 [--version <ver>] [--src-only] [--mode <m>]
@@ -91,7 +93,7 @@ fi
 if $SRC_ONLY; then
     p "models checks skipped (--src-only)"
 else
-    paddle_dir="$CHECK_ROOT/models/paddleocr_models"
+    paddle_dir="${MODELS_DIR:-$CHECK_ROOT/models}/paddleocr_models"
     if [ -d "$paddle_dir" ]; then
         subdirs="$(find "$paddle_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
         if [ "$subdirs" -ge 4 ]; then

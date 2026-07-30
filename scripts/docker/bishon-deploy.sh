@@ -381,11 +381,13 @@ log "=== preflight (informational; failures don't block) ==="
 PREFLIGHT_ARGS=(--mode "$MODE_FOR_PREFLIGHT")
 [ -n "$VERSION_FOR_PREFLIGHT" ] && PREFLIGHT_ARGS+=(--version "$VERSION_FOR_PREFLIGHT")
 # When running from a bundle, pass the source dir so preflight can find
-# bishon_kernel/bishon_server/dist/ and models/ inside the extracted source.
+# bishon_kernel/bishon_server/dist/. Models are at the bundle root level
+# (not inside bishon/), so pass a separate --models-dir.
 if [ -n "${BUNDLE_SOURCE_DIR:-}" ]; then
     export CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
     export ENV_SRC="${CONDA_ROOT}/envs/bishon"
     PREFLIGHT_ARGS+=(--source-dir "$BUNDLE_SOURCE_DIR")
+    PREFLIGHT_ARGS+=(--models-dir "$BUNDLE_DIR/models")
 fi
 bash "$SCRIPT_DIR/preflight.sh" "${PREFLIGHT_ARGS[@]}" 2>&1 | sed 's/^/  /' || true
 

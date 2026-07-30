@@ -451,6 +451,17 @@ case "$MODE" in
             fi
         else
             IMAGE_SOURCE="${IMAGE_SOURCE:-load}"
+            if [ -z "$IMAGE_TAR" ]; then
+                # If docker image exists locally but the tar wasn't shipped in the
+                # bundle, auto-save it now so the user doesn't have to type a path.
+                LOCAL_IMAGE="bishon-cuda:${TAG:-$(head -1 "$BUNDLE_DIR/VERSION" 2>/dev/null | tr -d '[:space:]' || echo unknown)}"
+                if docker image inspect "$LOCAL_IMAGE" >/dev/null 2>&1; then
+                    log "docker image $LOCAL_IMAGE exists locally — saving as tarball"
+                    IMAGE_TAR="$BUNDLE_DIR/$LOCAL_IMAGE.tar"   # bishon-cuda:2.1.0.tar
+                    docker save "$LOCAL_IMAGE" -o "$IMAGE_TAR"
+                    log "saved $IMAGE_TAR (use --skip-image in make-release.sh to avoid this step)"
+                fi
+            fi
             [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask_path \
                 "image tarball path? (from build.sh + docker save)" \
                 "$IMAGE_TAR")

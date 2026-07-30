@@ -102,7 +102,18 @@ else
             f "paddleocr: $paddle_dir has $subdirs subdirs (need >=4: det/rec/cls/doc_ori)"
         fi
     else
-        f "paddleocr dir missing: $paddle_dir"
+        # In a deploy bundle, models may be in tarball form (not yet extracted).
+        # Accept the tarball as evidence that models are available.
+        models_tgz=""
+        for cand_dir in "$CHECK_ROOT" "$(dirname "$CHECK_ROOT")" "$MODELS_DIR" "$REPO_ROOT"; do
+            tgz="$(ls "$cand_dir"/bishon-models-*.tar.gz 2>/dev/null | head -1)"
+            [ -n "$tgz" ] && models_tgz="$tgz" && break
+        done
+        if [ -n "$models_tgz" ]; then
+            p "paddleocr dir missing but models tarball available: $models_tgz"
+        else
+            f "paddleocr dir missing: $paddle_dir"
+        fi
     fi
 fi
 

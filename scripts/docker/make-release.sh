@@ -25,11 +25,15 @@ OUTPUT_DIR=""           # default: $REPO_ROOT/dist
 SKIP_ENV=false
 SKIP_MODELS=false
 SKIP_IMAGE=false
+FORCE=false
+MERGE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)     VERSION="$2";    shift 2 ;;
         --conda-root)  CONDA_ROOT="$2"; shift 2 ;;
         --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
+        --force)       FORCE=true;      shift ;;
+        --merge)       MERGE=true;      shift ;;
         --skip-env)    SKIP_ENV=true;   shift ;;
         --skip-models) SKIP_MODELS=true; shift ;;
         --skip-image)  SKIP_IMAGE=true; shift ;;
@@ -48,6 +52,12 @@ COMPONENT SELECTION (all included by default)
   --skip-models        Skip models (Qwen3-Reranker + PaddleOCR ~2.5 GB).
   --skip-image         Skip the docker image tar (~3 GB).
 
+EXISTING RELEASE DIR
+  --force              Remove existing release-<ver>/ dir before packaging.
+  --merge              Keep existing artifacts; only update changed files.
+                       Useful for incremental releases (e.g. first ship
+                       models, later update source only).
+
 Outputs (under --output-dir / default dist/):
   bishon-release-<ver>.tar.gz        source + env + models + scripts
   bishon-models-<ver>.tar.gz         models only (for install/upgrade reuse)
@@ -58,6 +68,8 @@ EOF
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
+
+$FORCE && $MERGE && die "--force and --merge are mutually exclusive"
 
 # Default VERSION from file if not passed on CLI (matches bishon-build.sh).
 if [ -z "$VERSION" ]; then
@@ -94,8 +106,20 @@ bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
 # --- 1. Stage directory ------------------------------------------------------
 
 log "staging at $DIST"
-rm -rf "$DIST"
-mkdir -p "$DIST"
+if [ -d "$DIST" ]; then
+    if $FORCE; then
+        log "--force: removing existing $DIST"
+        rm -rf "$DIST"
+        mkdir -p "$DIST"
+    elif $MERGE; then
+        log "--merge: keeping existing artifacts in $DIST, updating changed files"
+        # Don't rm -rf; rsync will overwrite on a per-file basis.
+    else
+        die "$DIST already exists. Use --force to overwrite or --merge to keep existing artifacts and update incrementally."
+    fi
+else
+    mkdir -p "$DIST"
+fi
 
 # --- 2. python-env (one env, slim) — skip with --skip-env ------------------
 if $SKIP_ENV; then

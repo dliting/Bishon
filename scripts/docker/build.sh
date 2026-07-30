@@ -60,17 +60,15 @@ die() { bishon_die "$@"; }
 }
 
 IMAGE="bishon-$ACC:$VERSION"
+# Remove previous tags so docker build creates a fresh tag (avoid stale
+# tag conflicts from `docker load` leaving old tags on different images).
+docker rmi "$IMAGE" "bishon-$ACC:latest" 2>/dev/null || true
 log "Building $IMAGE from $DOCKERFILE ..."
 docker build \
     -t "$IMAGE" \
+    -t "bishon-$ACC:latest" \
     -f "$DOCKERFILE" \
     "$REPO_ROOT/docker"
-
-# Tag as latest so CI/automation scripts can always pull :latest
-# without parsing version numbers. install.sh still pins to a
-# specific version via .image-tag; :latest is for human/CI convenience.
-docker rmi "bishon-$ACC:latest" 2>/dev/null || true
-docker tag "$IMAGE" "bishon-$ACC:latest"
 
 log "Built $IMAGE (+ tagged bishon-$ACC:latest)"
 SIZE_BYTES="$(docker image inspect "$IMAGE" --format '{{.Size}}')"

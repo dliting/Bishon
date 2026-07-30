@@ -341,12 +341,14 @@ if [ -n "$BUNDLE_DIR" ]; then
         [ -n "${!var:-}" ] && return 0
         local matches
         matches=$(ls "$BUNDLE_DIR"/$pattern 2>/dev/null | sort) || true  # ls exits 2 on no match → pipefail → set -e; || true guards it
-        case "$(echo "$matches" | wc -l)" in
-            1)  printf -v "$var" "%s" "$matches"
-                log "auto-detected $descr: ${!var}"
-                ;;
-            0|*) : ;;  # 0 → no match; >1 → ambiguous; both fall through to prompt
-        esac
+        if [ -z "$matches" ]; then
+            return 0   # no match; nothing to auto-detect
+        fi
+        line_count=$(echo "$matches" | wc -l)
+        if [ "$line_count" -eq 1 ]; then
+            printf -v "$var" "%s" "$matches"
+            log "auto-detected $descr: ${!var}"
+        fi
     }
     glob_bundle RELEASE_TAR 'bishon-release-*.tar.gz' 'release tarball'
     glob_bundle IMAGE_TAR   'bishon-cuda-image-*.tar' 'image tarball'

@@ -130,3 +130,27 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
     grep -q "deploy.conf" "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
     rm -rf "$tmp"
 }
+
+# Regression test for I1: --dry-run MUST NOT write deploy.conf even with
+# default --save-config (otherwise dry-run is not actually side-effect-free).
+@test "I1 regression: dry-run without --no-save-config does NOT write deploy.conf" {
+    tmp="$(mktemp -d)"
+    # Without --no-save-config, default would have saved; dry-run must skip.
+    run bash "$REPO_ROOT/scripts/docker/bishon-deploy.sh" \
+        --non-interactive --dry-run \
+        --mode docker-online --host-dir "$tmp" \
+        --release /tmp/nope.tar.gz --registry ghcr \
+        --models-source skip
+    [ "$status" -eq 0 ]
+    [ ! -f "$tmp/deploy.conf" ] || \
+        { echo "FAIL: deploy.conf was written in dry-run mode (I1 regression)"; false; }
+    rm -rf "$tmp"
+}
+
+# Happy-path: NON-dry-run with default --save-config DOES write deploy.conf.
+# (Requires actual install execution; verify only that the save block exists
+# in source and is reachable. Full end-to-end covered by interactive testing.)
+@test "save-config block in wizard source has correct dry-run guard" {
+    # The save block must be guarded by `if ! $DRY_RUN && $SAVE_CONFIG ...`
+    grep -E 'if ! \$DRY_RUN && \$SAVE_CONFIG' "$REPO_ROOT/scripts/docker/bishon-deploy.sh"
+}

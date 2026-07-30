@@ -267,8 +267,11 @@ if ! $NON_INTERACTIVE; then
     [ "$confirm" = "y" ] || { log "aborted"; exit 1; }
 fi
 
-# --- save config ------------------------------------------------------------
-if $SAVE_CONFIG && [ -n "$HOST_DIR" ]; then
+# --- save config (skipped in dry-run mode; I1 fix) -------------------------
+# NOTE: write must happen AFTER the dry-run check, otherwise --dry-run leaves
+# a deploy.conf on disk — violating the dry-run contract that operators rely
+# on for safe rehearsal deploys.
+if ! $DRY_RUN && $SAVE_CONFIG && [ -n "$HOST_DIR" ]; then
     CONF="$HOST_DIR/deploy.conf"
     cat > "$CONF" <<EOF
 # Auto-saved by bishon-deploy.sh $(date -Iseconds 2>/dev/null || echo "")
@@ -283,7 +286,7 @@ MODELS_SOURCE="$MODELS_SOURCE"
 MODELS_TAR="$MODELS_TAR"
 SOURCE_DIR="$SOURCE_DIR"
 CONDA_ENV="$CONDA_ENV"
-INSTALL_DEPS=$INSTALL_DEPS
+INSTALL_DEPS="$INSTALL_DEPS"
 EOF
     log "config saved to $CONF"
 fi

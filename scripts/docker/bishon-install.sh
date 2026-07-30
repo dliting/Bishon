@@ -46,9 +46,13 @@ while [[ $# -gt 0 ]]; do
         --vpc)          REGISTRY="aliyun-vpc"; shift ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --host-dir <dir> (--release <tar> (--image <tar> | --pull)
-                                          | --image-source pull --registry ghcr)
+Usage: $0 --host-dir <dir> (--image <tar> | --pull | --image-source existing) \
+          --release <tar>
           [--models <tar.gz>] [--accelerator cuda] [--tag <ver>]
+
+Note: --release is ALWAYS required for first-time install (the release
+tarball carries the Python env + source code that cannot be obtained from
+a registry pull).
 
 Image source modes:
   --image <tar>            Load image from a local docker save tarball (default).
@@ -61,7 +65,6 @@ When --pull is used:
 
 Other:
   --host-dir <dir>     Where state lives (must be ext4 / non-9p filesystem).
-  --release <tar.gz>   Main release tarball (source + env + scripts).
   --models <tar.gz>    (Optional) Models tarball from make-release.sh.
   --accelerator <acc>  cuda (default) | ascend (future).
 EOF

@@ -79,7 +79,7 @@ fi
 # --- 1. preflight -----------------------------------------------------------
 log "=== Step 1/4: preflight ==="
 bash "$SCRIPT_DIR/preflight.sh" --mode bare-metal || \
-    die "preflight failed (use --skip-preflight once you've addressed the issues)"
+    die "preflight failed. Address the issues above, then re-run."
 
 # --- 2. Optional pip install ------------------------------------------------
 if $INSTALL_DEPS; then

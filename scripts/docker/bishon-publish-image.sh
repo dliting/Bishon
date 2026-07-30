@@ -87,6 +87,12 @@ ensure_login() {
     local token_env="$3"
 
     # Already authenticated?
+    # Note: substring match against ~/.docker/config.json. The JSON stores
+    # registry URLs as keys (e.g. "https://ghcr.io": {...}). $registry_url
+    # here may include the namespace (e.g. "ghcr.io/dliting") but docker
+    # only stores the registry root, so we match on the leading substring.
+    # Acceptable because both well-known URLs are stable and unlikely to
+    # appear as substrings of unrelated entries.
     if grep -q "$registry_url" ~/.docker/config.json 2>/dev/null; then
         log "already logged in to $registry_url"
         return 0
@@ -139,4 +145,6 @@ case "$REGISTRY" in
 esac
 
 log "done."
-docker images --format "{{.Repository}}:{{.Tag}}  {{.Size}}" | grep bishon-cuda | head -5
+# `|| true` because grep returns 1 on no match and `set -e` would abort
+# the script just before exit even though we already pushed successfully.
+docker images --format "{{.Repository}}:{{.Tag}}  {{.Size}}" | grep bishon-cuda | head -5 || true

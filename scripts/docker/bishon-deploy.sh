@@ -52,6 +52,7 @@ INSTALL_DEPS=false
 NATIVE_WINDOWS=false
 LOAD_CONFIG=""
 SAVE_CONFIG=true
+BUNDLE_DIR=""           # auto-detected: dir containing release/image/models tarballs
 
 # --- arg parsing ------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -74,8 +75,74 @@ while [[ $# -gt 0 ]]; do
         --native-windows)  NATIVE_WINDOWS=true; shift ;;
         --load-config)     LOAD_CONFIG="$2"; shift 2 ;;
         --no-save-config)  SAVE_CONFIG=false; shift ;;
+        --bundle-dir)      BUNDLE_DIR="$2"; shift 2 ;;
         --help|-h)
-            sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
+            cat <<'EOF'
+bishon-deploy.sh — Interactive deployment wizard for Bishon V2.
+
+Three modes:
+  docker-online   Pull image from ghcr.io / Aliyun, run in Docker. (Recommended.)
+  docker-offline  Load image from local docker save tar, run in Docker.
+  bare-metal      Run uvicorn directly with the bishon conda env. (No Docker.)
+
+USAGE
+  bash bishon-deploy.sh                              # interactive
+  bash bishon-deploy.sh --non-interactive [flags...] # CI / batch deploy
+
+FLAGS (every interactive question has a corresponding flag)
+  --mode <m>             Deployment mode (docker-online|docker-offline|bare-metal).
+  --host-dir <dir>       Where state lives (Docker modes only).
+                         MUST be ext4 (SQLite WAL fails on 9p/drvfs).
+  --release <tar.gz>     Main release tarball from make-release.sh.
+                         Always required for Docker modes (carries env + source).
+  --image <tar>          Local image tarball (docker-offline mode).
+  --pull                 Pull image from registry at install time (docker-online).
+  --image-source <src>   load | pull | existing (advanced; usually use --image/--pull).
+  --registry <r>         ghcr (default) | aliyun | aliyun-vpc | <full-url>.
+                         Used with --pull.
+  --tag <ver>            Image tag. Default: read from VERSION file.
+  --models-source <s>    online (hf-mirror.com + paddleocr auto) | tarball | skip.
+  --models <tar.gz>      Local models tarball (when --models-source tarball).
+  --source-dir <path>    Bishon V2 repo root (bare-metal mode).
+  --conda-env <path>     Path to bishon conda env (bare-metal; auto-detected if omitted).
+  --install-deps         Re-run pip install -r requirements.txt (bare-metal).
+  --bundle-dir <dir>     Dir containing release/image/models tarballs. Auto-detected
+                         in $PWD or script dir for offline mode; saves typing paths.
+  --load-config <path>   Read defaults from a saved config file.
+  --no-save-config       Skip writing <host-dir>/deploy.conf.
+  --native-windows       Bypass native-Windows warning (unsupported, use WSL2).
+  --non-interactive      Disable prompts; every question becomes a flag.
+  --dry-run              Walk through everything, print plan, no side effects.
+
+CONFIG PERSISTENCE
+  After a successful (non-dry-run) run, choices are saved to
+  <host-dir>/deploy.conf. Next run reads it as defaults. Override with flags
+  or --load-config.
+
+PLATFORM DETECTION
+  Native Windows (MSYS/Cygwin/cmd) is refused unless --native-windows.
+  WSL/Linux proceed normally. Run inside `wsl -d Ubuntu-22.04` for Windows.
+
+EXAMPLES
+  Interactive wizard:
+    bash bishon-deploy.sh
+
+  Non-interactive Docker pull from Aliyun, models online:
+    bash bishon-deploy.sh --non-interactive \
+        --mode docker-online --host-dir /var/lib/bishon \
+        --release bishon-release-2.2.0.tar.gz \
+        --registry aliyun --models-source online
+
+  Non-interactive bare-metal, no models, no pip reinstall:
+    bash bishon-deploy.sh --non-interactive \
+        --mode bare-metal --source-dir /opt/Bishon/V2/dev \
+        --models-source skip
+
+  Dry-run (no side effects, prints plan):
+    bash bishon-deploy.sh --non-interactive --dry-run \
+        --mode docker-offline --host-dir /var/lib/bishon \
+        --release r.tar.gz --image i.tar
+EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
@@ -186,42 +253,97 @@ bash "$SCRIPT_DIR/preflight.sh" --mode "$MODE_FOR_PREFLIGHT" \
 # --- gather missing inputs --------------------------------------------------
 if [ -z "$MODE" ]; then
     log ""
-    MODE=$(ask_choice "Select deployment mode:" \
+    MODE=$(ask_choice \
+        "Select deployment mode:
+  docker-online   = pull image from ghcr.io / Aliyun, run in Docker (recommended)
+  docker-offline  = load image from local tar, run in Docker (internal/air-gap)
+  bare-metal      = run uvicorn directly, no Docker" \
         "docker-online docker-offline bare-metal" "docker-online")
 fi
 log "mode: $MODE"
 
+# Helper: auto-glob tarball in bundle dir if a path is not yet set.
+# Sets the named variable from a glob pattern; aborts if 0 or >1 matches.
+glob_bundle() {
+    local var="$1" bundle="$2" pattern="$3" descr="$4"
+    if [ -n "${!var}" ]; then return 0; fi     # already set
+    if [ -z "$bundle" ]; then return 0; fi      # no bundle dir to glob in
+    local matches
+    matches=$(ls "$bundle"/$pattern 2>/dev/null | sort)
+    case "$(echo "$matches" | wc -l)" in
+        0)  log "no $descr found in $bundle/$pattern — will prompt" ;;
+        1)  printf -v "$var" "%s" "$matches"
+            log "auto-detected $descr: ${!var}"
+            ;;
+        *)  log "multiple $descr found in $bundle — will prompt" ;;
+    esac
+}
+
 case "$MODE" in
     docker-online|docker-offline)
-        [ -n "$HOST_DIR" ] && HOST_DIR=$(ask "host-dir path?" "$HOST_DIR")
+        [ -n "$HOST_DIR" ] || HOST_DIR=$(ask \
+            "host-dir path? (where state lives; MUST be ext4 — SQLite WAL fails on 9p/drvfs)" \
+            "$HOST_DIR")
         [ -z "$HOST_DIR" ] && die "--host-dir required for $MODE"
         mkdir -p "$HOST_DIR"
 
-        [ -n "$RELEASE_TAR" ] || RELEASE_TAR=$(ask "release tarball path?" "")
+        # For offline mode: try to auto-detect a "bundle dir" containing
+        # release/image/models tarballs. Look in $PWD, $HOST_DIR's parent,
+        # and the script's own directory.
+        if [ "$MODE" = "docker-offline" ] && [ -z "$BUNDLE_DIR" ]; then
+            for cand in "$PWD" "$(dirname "$HOST_DIR")" "$(dirname "$0")"; do
+                if ls "$cand"/bishon-release-*.tar.gz >/dev/null 2>&1; then
+                    BUNDLE_DIR="$cand"
+                    log "auto-detected bundle dir: $BUNDLE_DIR"
+                    break
+                fi
+            done
+        fi
+        if [ -n "$BUNDLE_DIR" ]; then
+            glob_bundle RELEASE_TAR "$BUNDLE_DIR" 'bishon-release-*.tar.gz' 'release tarball'
+            glob_bundle IMAGE_TAR   "$BUNDLE_DIR" 'bishon-cuda-image-*.tar' 'image tarball'
+            glob_bundle MODELS_TAR  "$BUNDLE_DIR" 'bishon-models-*.tar.gz'  'models tarball'
+        fi
+
+        [ -n "$RELEASE_TAR" ] || RELEASE_TAR=$(ask \
+            "release tarball path? (from make-release.sh; carries env + source)" "")
         [ -z "$RELEASE_TAR" ] && die "--release required (run make-release.sh first)"
 
         if [ "$MODE" = "docker-online" ]; then
             IMAGE_SOURCE="${IMAGE_SOURCE:-pull}"
             if [ -z "$REGISTRY" ] || [ "$REGISTRY" = "ghcr" ]; then
-                REGISTRY=$(ask_choice "Registry?" "ghcr aliyun aliyun-vpc" "ghcr")
+                REGISTRY=$(ask_choice \
+                    "Registry?
+  ghcr       = ghcr.io (海外)
+  aliyun     = crpi-...cn-beijing.personal.cr.aliyuncs.com (国内推荐)
+  aliyun-vpc = 同上但走阿里云 VPC 内网（ECS 部署更快）" \
+                    "ghcr aliyun aliyun-vpc" "ghcr")
             fi
         else
             IMAGE_SOURCE="${IMAGE_SOURCE:-load}"
-            [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask "image tarball path?" "")
+            [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask \
+                "image tarball path? (from bishon-build.sh + docker save)" "")
             [ -z "$IMAGE_TAR" ] && die "--image <tar> required for docker-offline"
         fi
 
         if [ -z "$MODELS_SOURCE" ]; then
-            MODELS_SOURCE=$(ask_choice "Models source?" "online tarball skip" "skip")
+            MODELS_SOURCE=$(ask_choice \
+                "Models source?
+  online  = download Qwen3-Reranker (hf-mirror.com) + PaddleOCR (paddleocr auto)
+  tarball = extract from local bishon-models-*.tar.gz
+  skip    = install without models (Rerank off, OCR warns at startup)" \
+                "online tarball skip" "skip")
         fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then
-            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask "models tarball path?" "")
+            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask \
+                "models tarball path? (from make-release.sh)" "$MODELS_TAR")
             [ -z "$MODELS_TAR" ] && die "--models <tar> required with --models-source tarball"
         fi
         ;;
 
     bare-metal)
-        [ -n "$SOURCE_DIR" ] || SOURCE_DIR=$(ask "source repo path?" "$REPO_ROOT")
+        [ -n "$SOURCE_DIR" ] || SOURCE_DIR=$(ask \
+            "source repo path? (Bishon V2 repo root, containing bishon_kernel/)" "$REPO_ROOT")
         [ -z "$SOURCE_DIR" ] && die "--source-dir required for bare-metal"
         [ -d "$SOURCE_DIR/bishon_kernel" ] || die "$SOURCE_DIR is not a Bishon V2 repo"
 
@@ -231,14 +353,21 @@ case "$MODE" in
                 [ -x "$cand/bin/python" ] && CONDA_ENV="$cand" && break
             done
         fi
-        [ -n "$CONDA_ENV" ] || CONDA_ENV=$(ask "conda env path?" "")
+        [ -n "$CONDA_ENV" ] || CONDA_ENV=$(ask \
+            "conda env path? (containing bin/python with all deps)" "")
         [ -n "$CONDA_ENV" ] || die "could not locate bishon conda env; pass --conda-env"
 
         if [ -z "$MODELS_SOURCE" ]; then
-            MODELS_SOURCE=$(ask_choice "Models source?" "online tarball skip" "skip")
+            MODELS_SOURCE=$(ask_choice \
+                "Models source?
+  online  = download Qwen3-Reranker (hf-mirror.com) + PaddleOCR (paddleocr auto)
+  tarball = extract from local bishon-models-*.tar.gz
+  skip    = no models (Rerank off, OCR warns at startup)" \
+                "online tarball skip" "skip")
         fi
         if [ "$MODELS_SOURCE" = "tarball" ]; then
-            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask "models tarball path?" "")
+            [ -n "$MODELS_TAR" ] || MODELS_TAR=$(ask \
+                "models tarball path? (from make-release.sh)" "$MODELS_TAR")
         fi
         ;;
 

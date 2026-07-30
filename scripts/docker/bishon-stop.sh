@@ -13,7 +13,23 @@ HOST_DIR=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2"; shift 2 ;;
-        -h|--help) echo "usage: $0 --host-dir <dir>"; exit 0 ;;
+        -h|--help)
+            cat <<EOF
+bishon-stop.sh — Stop and remove the Bishon V2 container.
+
+Idempotent: no-op if no container exists. Image and <host-dir> data are
+preserved. Use bishon-uninstall.sh to remove the image or data.
+
+USAGE
+  bash $0 --host-dir <dir>
+
+FLAGS
+  --host-dir <dir>   The directory passed to bishon-install.sh.
+
+EXAMPLES
+  bash $0 --host-dir /var/lib/bishon
+EOF
+            exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done

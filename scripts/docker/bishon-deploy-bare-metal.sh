@@ -37,7 +37,40 @@ while [[ $# -gt 0 ]]; do
         --no-start)      START_AFTER=false; shift ;;
         --dry-run)       DRY_RUN=true; shift ;;
         --help|-h)
-            sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
+            cat <<'EOF'
+bishon-deploy-bare-metal.sh — L2 bare-metal deployment module.
+
+Runs the service directly with uvicorn (no Docker). Steps:
+  1. preflight --mode bare-metal  (informational checks)
+  2. Optional: pip install -r requirements.txt
+  3. Models: download (online) or extract (tarball) or skip
+  4. bash start.sh
+
+USAGE
+  bash bishon-deploy-bare-metal.sh --source-dir <repo> [flags...]
+
+FLAGS
+  --source-dir <path>      Bishon V2 repo root (REQUIRED).
+  --conda-env <path>       Path to bishon conda env. Default: auto-detect
+                           /opt/miniconda3/envs/bishon or ~/miniconda3/envs/bishon.
+  --models-source <s>      online (hf-mirror.com + paddleocr auto) |
+                           tarball | skip. Default: skip.
+  --models <tar.gz>        Local models tarball (required with --models-source tarball).
+  --install-deps           Re-run pip install -r requirements.txt.
+  --no-start               Stop after setup; don't launch start.sh.
+  --dry-run                Print plan, do not execute.
+
+EXAMPLES
+  Auto-detect env, skip models, no pip reinstall:
+    bash bishon-deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev
+
+  Fresh install with online models + pip reinstall:
+    bash bishon-deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev \
+        --install-deps --models-source online
+
+  Dry-run:
+    bash bishon-deploy-bare-metal.sh --source-dir /opt/Bishon/V2/dev --dry-run
+EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac

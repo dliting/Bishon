@@ -13,7 +13,26 @@ HOST_DIR=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2"; shift 2 ;;
-        -h|--help) echo "usage: $0 --host-dir <dir>"; exit 0 ;;
+        -h|--help)
+            cat <<EOF
+bishon-start.sh — Start the Bishon V2 container.
+
+Reads .image-tag and .accelerator from <host-dir>, runs the container with
+-v <host-dir>:/opt/bishon-data + --env-file <host-dir>/.env + GPU flags,
+then polls /api/health up to 180s (cold-start budget for model loading).
+
+USAGE
+  bash $0 --host-dir <dir>
+
+FLAGS
+  --host-dir <dir>   Directory created by bishon-install.sh. Must contain
+                     .image-tag, .accelerator (optional, defaults to cuda),
+                     and .env.
+
+EXAMPLES
+  bash $0 --host-dir /var/lib/bishon
+EOF
+            exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done

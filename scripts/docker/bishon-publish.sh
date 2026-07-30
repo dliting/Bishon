@@ -28,7 +28,26 @@ while [[ $# -gt 0 ]]; do
         --release)  RELEASE_TAR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --host-dir <dir> --release <new-release.tar.gz>
+bishon-publish.sh — Upgrade code/models on an installed host (in place).
+
+Atomically replaces bishon/ (source) and models/ in <host-dir> from a new
+release tarball, then optionally python-env/ if the new tarball carries one.
+Never touches .env, BISHON_DB/, logs/, .image-tag, .accelerator.
+
+After publish, restart the container: bishon-stop.sh && bishon-start.sh.
+
+USAGE
+  bash $0 --host-dir <dir> --release <new-release.tar.gz>
+
+FLAGS
+  --host-dir <dir>     Directory created by bishon-install.sh.
+  --release <tar.gz>   New release tarball (from make-release.sh).
+                       Use --src-only mode in make-release.sh for code-only
+                       patches (no env, no models) — much smaller tarball.
+
+EXAMPLES
+  bash $0 --host-dir /var/lib/bishon \\
+      --release bishon-release-2.2.1.tar.gz
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;

@@ -29,7 +29,36 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=true; shift ;;
         --no-start)     START_AFTER=false; shift ;;
         --help|-h)
-            sed -n '2,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'
+            cat <<'EOF'
+bishon-deploy-docker.sh — L2 Docker deployment module.
+
+Orchestrates bishon-install.sh + bishon-start.sh for any Docker mode
+(online pull, offline load, or already-existing image). All flags except
+the two listed below are forwarded to bishon-install.sh.
+
+USAGE
+  bash bishon-deploy-docker.sh --host-dir <dir> --release <tar> \
+      (--image <tar> | --pull [--registry ghcr|aliyun] | --image-source existing) \
+      [--models <tar>] [--tag <ver>] [--accelerator cuda]
+
+FLAGS
+  --dry-run        Print the install.sh + start.sh invocation plan, do not run.
+  --no-start       Stop after install.sh; skip start.sh (useful for staging).
+  All other flags are forwarded to bishon-install.sh. See:
+    bishon-install.sh --help
+
+EXAMPLES
+  Online pull from ghcr.io:
+    bash bishon-deploy-docker.sh --host-dir /var/lib/bishon \
+        --release r.tar.gz --pull --registry ghcr
+
+  Offline load:
+    bash bishon-deploy-docker.sh --host-dir /var/lib/bishon \
+        --release r.tar.gz --image bishon-cuda-image-2.2.0.tar
+
+  Dry-run to see what would be invoked:
+    bash bishon-deploy-docker.sh --host-dir /tmp/x --release r.tar.gz --pull --dry-run
+EOF
             exit 0 ;;
         *) INSTALL_ARGS+=("$1"); shift ;;
     esac

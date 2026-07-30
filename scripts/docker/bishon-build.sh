@@ -16,6 +16,8 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 VERSION=""
 ACC="cuda"
 while [[ $# -gt 0 ]]; do
@@ -24,16 +26,25 @@ while [[ $# -gt 0 ]]; do
         --accelerator) ACC="$2";    shift 2 ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --version <ver> [--accelerator cuda|ascend]
+Usage: $0 [--version <ver>] [--accelerator cuda|ascend]
+
+  --version <ver>      Image tag. Default: read from VERSION file in repo root.
+  --accelerator <acc>  cuda (default) | ascend (future).
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
 
-[ -n "$VERSION" ] || { echo "usage: $0 --version <ver>" >&2; exit 1; }
+# Default VERSION from file if not passed on CLI. Single source of truth
+# for the project; release flow updates VERSION once and all scripts pick up.
+if [ -z "$VERSION" ]; then
+    VERSION_FILE="$REPO_ROOT/VERSION"
+    [ -f "$VERSION_FILE" ] || { echo "FATAL: $VERSION_FILE missing and --version not given" >&2; exit 1; }
+    VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+    [ -n "$VERSION" ] || { echo "FATAL: VERSION file is empty" >&2; exit 1; }
+fi
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOCKERFILE="$REPO_ROOT/docker/Dockerfile.$ACC"
 
 export BISHON_LOG_TAG=build

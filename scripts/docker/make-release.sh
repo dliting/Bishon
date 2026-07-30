@@ -17,6 +17,8 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
 VERSION=""
 CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
 SRC_ONLY=false
@@ -27,9 +29,10 @@ while [[ $# -gt 0 ]]; do
         --src-only)   SRC_ONLY=true;   shift ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --version <ver> [--conda-root /opt/miniconda3] [--src-only]
+Usage: $0 [--version <ver>] [--conda-root /opt/miniconda3] [--src-only]
 
   --version <ver>      Image and release tarball version, e.g. 2.1.0.
+                       Default: read from VERSION file in repo root.
   --conda-root <path>  Path to miniconda3 installation (def: /opt/miniconda3).
   --src-only           Package source + scripts only; skip python-env, models,
                        and the docker image tar. Fast (~5s) for quick publish
@@ -45,9 +48,15 @@ EOF
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
-[ -n "$VERSION" ] || { echo "usage: $0 --version <ver>" >&2; exit 1; }
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# Default VERSION from file if not passed on CLI (matches bishon-build.sh).
+if [ -z "$VERSION" ]; then
+    VERSION_FILE="$REPO_ROOT/VERSION"
+    [ -f "$VERSION_FILE" ] || { echo "FATAL: $VERSION_FILE missing and --version not given" >&2; exit 1; }
+    VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+    [ -n "$VERSION" ] || { echo "FATAL: VERSION file is empty" >&2; exit 1; }
+fi
+
 ENV_SRC="$CONDA_ROOT/envs/bishon"
 DIST="$REPO_ROOT/dist/release-$VERSION"
 DIST_TGZ="$REPO_ROOT/dist/bishon-release-$VERSION.tar.gz"

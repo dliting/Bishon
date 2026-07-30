@@ -21,25 +21,48 @@ RELEASE_TAR=""
 IMAGE_TAR=""
 MODELS_TAR=""
 ACCELERATOR="cuda"
+IMAGE_SOURCE="load"     # load | pull | existing
+IMAGE_REF=""            # used when IMAGE_SOURCE=pull: e.g. bishon-cuda:2.1.0
+REGISTRY="ghcr"         # ghcr | aliyun | <custom-url>
+TAG=""                  # image tag, default reads VERSION
+
+# Well-known registries (used when --registry is one of the short names).
+REGISTRY_GHCR="ghcr.io/dliting"
+REGISTRY_ALIYUN="crpi-cpr1xsemy1pzwjoc.cn-beijing.personal.cr.aliyuncs.com/dliting"
+REGISTRY_ALIYUN_VPC="crpi-cpr1xsemy1pzwjoc-vpc.cn-beijing.personal.cr.aliyuncs.com/dliting"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --host-dir)    HOST_DIR="$2";    shift 2 ;;
-        --release)     RELEASE_TAR="$2"; shift 2 ;;
-        --image)       IMAGE_TAR="$2";   shift 2 ;;
-        --models)      MODELS_TAR="$2";  shift 2 ;;
-        --accelerator) ACCELERATOR="$2"; shift 2 ;;
+        --host-dir)     HOST_DIR="$2";    shift 2 ;;
+        --release)      RELEASE_TAR="$2"; shift 2 ;;
+        --image)        IMAGE_TAR="$2";   shift 2 ;;
+        --models)       MODELS_TAR="$2";  shift 2 ;;
+        --accelerator)  ACCELERATOR="$2"; shift 2 ;;
+        --pull)         IMAGE_SOURCE="pull"; shift ;;
+        --image-source) IMAGE_SOURCE="$2"; shift 2 ;;
+        --image-ref)    IMAGE_REF="$2";   shift 2 ;;
+        --tag)          TAG="$2";         shift 2 ;;
+        --registry)     REGISTRY="$2";    shift 2 ;;
+        --vpc)          REGISTRY="aliyun-vpc"; shift ;;
         -h|--help)
             cat <<EOF
-Usage: $0 --host-dir <dir> --release <tar.gz> --image <tar>
-          [--models <tar.gz>] [--accelerator cuda]
+Usage: $0 --host-dir <dir> (--release <tar> (--image <tar> | --pull)
+                                          | --image-source pull --registry ghcr)
+          [--models <tar.gz>] [--accelerator cuda] [--tag <ver>]
 
+Image source modes:
+  --image <tar>            Load image from a local docker save tarball (default).
+  --pull                   Pull image from a remote registry (online).
+  --image-source existing  Image already loaded/pulled; skip image step entirely.
+
+When --pull is used:
+  --registry <r>    ghcr (default) | aliyun | aliyun-vpc | <full-registry-url>
+  --tag <ver>       Image tag. Default: read from VERSION in script dir.
+
+Other:
   --host-dir <dir>     Where state lives (must be ext4 / non-9p filesystem).
   --release <tar.gz>   Main release tarball (source + env + scripts).
-  --image <tar>        Docker image from 'docker save'.
-  --models <tar.gz>    (Optional) Models tarball from make-release.sh. Skip
-                       to install without models (useful for upgrade when
-                       models are unchanged).
+  --models <tar.gz>    (Optional) Models tarball from make-release.sh.
   --accelerator <acc>  cuda (default) | ascend (future).
 EOF
             exit 0 ;;
@@ -55,14 +78,44 @@ source "$(dirname "$0")/lib/common.sh"
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 
-[ -n "$HOST_DIR" ]    || { echo "usage: $0 --host-dir <dir> --release <t> --image <t>" >&2; exit 1; }
+# Validate args based on image source mode.
+[ -n "$HOST_DIR" ]    || { echo "usage: $0 --host-dir <dir> ..." >&2; exit 1; }
 [ -n "$RELEASE_TAR" ] || die "--release required"
-[ -n "$IMAGE_TAR" ]   || die "--image required"
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
-[ -f "$IMAGE_TAR" ]   || die "image tar not found: $IMAGE_TAR"
 [ -z "$MODELS_TAR" ] || [ -f "$MODELS_TAR" ] || die "models tar not found: $MODELS_TAR"
+
+case "$IMAGE_SOURCE" in
+    load)
+        [ -n "$IMAGE_TAR" ]   || die "--image <tar> required (or use --pull / --image-source existing)"
+        [ -f "$IMAGE_TAR" ]   || die "image tar not found: $IMAGE_TAR"
+        ;;
+    pull)
+        : # IMAGE_TAR not needed; registry/tag determine the image ref.
+        ;;
+    existing)
+        : # caller has already docker pulled/loaded the image; just verify it exists locally
+        ;;
+    *) die "unknown --image-source value: $IMAGE_SOURCE (use load|pull|existing)" ;;
+esac
+
 command -v docker >/dev/null || die "docker not found on PATH"
 command -v curl >/dev/null   || die "curl not found on PATH (needed by start.sh health check)"
+
+# Resolve registry URL from short name.
+case "$REGISTRY" in
+    ghcr)       REGISTRY_URL="$REGISTRY_GHCR" ;;
+    aliyun)     REGISTRY_URL="$REGISTRY_ALIYUN" ;;
+    aliyun-vpc) REGISTRY_URL="$REGISTRY_ALIYUN_VPC" ;;
+    *)          REGISTRY_URL="$REGISTRY" ;;   # treat as full URL
+esac
+
+# Default tag from VERSION file if not specified (used by --pull and --existing).
+if [ -z "$TAG" ] && [ "$IMAGE_SOURCE" != "load" ]; then
+    VERSION_FILE="$(cd "$(dirname "$0")/.." && pwd)/VERSION"
+    if [ -f "$VERSION_FILE" ]; then
+        TAG="$(tr -d '[:space:]' < "$VERSION_FILE")"
+    fi
+fi
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 log "target host-dir: $HOST_DIR"
@@ -79,11 +132,33 @@ mkdir -p "$HOST_DIR"/{python-env,bishon,models}
 mkdir -p "$HOST_DIR"/BISHON_DB/{faiss,content}
 mkdir -p "$HOST_DIR"/logs/{debug_logs,qa_logs}
 
-# --- 3. Load image -----------------------------------------------------------
-log "loading image from $IMAGE_TAR ..."
-IMAGE_TAG="$(docker load -i "$IMAGE_TAR" | sed -n 's/^Loaded image: //p' | head -1)"
-[ -n "$IMAGE_TAG" ] || die "could not parse image tag from docker load output"
-log "image: $IMAGE_TAG"
+# --- 3. Image acquisition ----------------------------------------------------
+case "$IMAGE_SOURCE" in
+    load)
+        log "loading image from $IMAGE_TAR ..."
+        IMAGE_TAG="$(docker load -i "$IMAGE_TAR" | sed -n 's/^Loaded image: //p' | head -1)"
+        [ -n "$IMAGE_TAG" ] || die "could not parse image tag from docker load output"
+        log "image: $IMAGE_TAG"
+        ;;
+    pull)
+        [ -n "$TAG" ] || die "--tag required with --pull (or place a VERSION file alongside scripts/)"
+        IMAGE_TAG="$REGISTRY_URL/bishon-cuda:$TAG"
+        log "pulling image: $IMAGE_TAG"
+        docker pull "$IMAGE_TAG" || die "docker pull failed (registry may require login: docker login $REGISTRY_URL)"
+        # Tag it locally as bishon-cuda:<tag> so start.sh's .image-tag mechanism works uniformly.
+        LOCAL_TAG="bishon-cuda:$TAG"
+        docker tag "$IMAGE_TAG" "$LOCAL_TAG" || die "failed to tag pulled image as $LOCAL_TAG"
+        IMAGE_TAG="$LOCAL_TAG"
+        log "image: $IMAGE_TAG (tagged from $REGISTRY_URL)"
+        ;;
+    existing)
+        [ -n "$TAG" ] || die "--tag required with --image-source existing (or place a VERSION file)"
+        IMAGE_TAG="bishon-cuda:$TAG"
+        docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || \
+            die "image $IMAGE_TAG not present locally. Run docker pull first or use --pull / --image <tar>."
+        log "image: $IMAGE_TAG (already present)"
+        ;;
+esac
 
 # --- 4. Extract release tarball to a temp dir, then atomically move ----------
 # mktemp -d -p "$HOST_DIR" guarantees the temp dir is on the SAME filesystem as

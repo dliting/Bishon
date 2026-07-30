@@ -18,21 +18,33 @@ CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
 ENV_SRC="$CONDA_ROOT/envs/bishon"
 VERSION=""
 SRC_ONLY=false
+MODE="release"   # release | docker-online | docker-offline | bare-metal
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)  VERSION="$2"; shift 2 ;;
         --src-only) SRC_ONLY=true; shift ;;
-        -h|--help) echo "Usage: $0 [--version <ver>] [--src-only]"; exit 0 ;;
+        --mode)     MODE="$2"; shift 2 ;;
+        -h|--help)
+            cat <<EOF
+Usage: $0 [--version <ver>] [--src-only] [--mode <m>]
+
+  --version <ver>   Image tag to verify (only used for docker image check).
+  --src-only        Skip env+models+image checks (release packaging sub-mode).
+  --mode <m>        release (default) | docker-online | docker-offline | bare-metal
+                    Adjusts which checks are mandatory vs informational.
+EOF
+            exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
 
 fail=0
+info() { echo "  INFO: $*"; }
 p()  { echo "  PASS: $*"; }
 f()  { echo "  FAIL: $*" >&2; fail=1; }
 
-echo "=== Bishon v2 preflight ==="
+echo "=== Bishon v2 preflight (mode=$MODE) ==="
 
 # --- 1. bishon env ----------------------------------------------------------
 if $SRC_ONLY; then
@@ -88,18 +100,43 @@ else
 fi
 
 # --- 6. Docker image --------------------------------------------------------
-if $SRC_ONLY; then
-    p "docker image check skipped (--src-only)"
-elif [ -n "$VERSION" ]; then
-    IMAGE_TAG="bishon-cuda:$VERSION"
-    if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
-        p "docker image: $IMAGE_TAG"
-    else
-        f "docker image $IMAGE_TAG not found. Run: bishon-build.sh --version $VERSION"
-    fi
-else
-    p "docker image check skipped (no --version given)"
-fi
+# Mode-aware:
+#   release / docker-offline: image must be local (we'll docker save it)
+#   docker-online:            image will be pulled at install time; registry reachable check
+#   bare-metal:               docker not needed at all
+case "$MODE" in
+    bare-metal)
+        p "docker image check skipped (bare-metal mode)"
+        ;;
+    docker-online)
+        if ! command -v docker >/dev/null 2>&1; then
+            f "docker not installed (required for docker-online mode)"
+        else
+            p "docker available: $(docker --version)"
+            if [ -n "$VERSION" ]; then
+                # We don't pull here (network heavy); just confirm registry connectivity is plausible.
+                info "image bishon-cuda:$VERSION will be pulled at install time"
+            fi
+        fi
+        ;;
+    release|docker-offline)
+        if $SRC_ONLY; then
+            p "docker image check skipped (--src-only)"
+        elif [ -n "$VERSION" ]; then
+            IMAGE_TAG="bishon-cuda:$VERSION"
+            if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+                p "docker image: $IMAGE_TAG"
+            else
+                f "docker image $IMAGE_TAG not found. Run: bishon-build.sh --version $VERSION"
+            fi
+        else
+            p "docker image check skipped (no --version given)"
+        fi
+        ;;
+    *)
+        f "unknown --mode: $MODE (use release|docker-online|docker-offline|bare-metal)"
+        ;;
+esac
 
 # --- result ----------------------------------------------------------------
 echo

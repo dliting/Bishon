@@ -106,8 +106,8 @@ else
         # Accept the tarball as evidence that models are available.
         models_tgz=""
         for cand_dir in "$CHECK_ROOT" "$(dirname "$CHECK_ROOT")" "$MODELS_DIR" "$REPO_ROOT"; do
-            tgz="$(ls "$cand_dir"/bishon-models-*.tar.gz 2>/dev/null | head -1)"
-            [ -n "$tgz" ] && models_tgz="$tgz" && break
+            tgz="$(ls "$cand_dir"/bishon-models-*.tar.gz 2>/dev/null | head -1)" || true
+            if [ -n "$tgz" ]; then models_tgz="$tgz"; break; fi
         done
         if [ -n "$models_tgz" ]; then
             p "paddleocr dir missing but models tarball available: $models_tgz"

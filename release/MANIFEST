@@ -22,11 +22,9 @@ mkdocs.yml
 docker
 scripts
 
-# === Bare-metal entry points ===
+# === Bare-metal entry wrappers (delegate to scripts/) ===
 start.sh
-start.bat
 stop.sh
-stop.bat
 run_all_tests.sh
 
 # === Python project ===

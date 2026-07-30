@@ -1,8 +1,92 @@
-# Bishon V2 Docker 离线部署指南
+# Bishon V2 部署指南
 
-本文档说明 Bishon V2 的 **离线 Docker 部署** 流程：开发机打包镜像 + 发布包，部署机无需联网即可安装运行。适用于 v2.1+。
+本文档说明 Bishon V2 的部署流程。**推荐入口是 `bishon-deploy.sh` 向导**，覆盖三种场景：
 
-如需 bare-metal（裸进程）部署，参考根目录的 `README.md` 与 `start.sh`。
+| 模式 | 适合 | 网络需求 |
+|---|---|---|
+| `docker-online` | 在线用户，最简（推荐） | 拉镜像 ~3 GB |
+| `docker-offline` | 内网部署 | 无（已有镜像 tar） |
+| `bare-metal` | 直接 uvicorn，不用 Docker | 无（本地 env + models） |
+
+## 快速开始
+
+```bash
+# 在 WSL2 Ubuntu 22.04 终端
+cd /opt/Bishon/V2/dev
+bash scripts/docker/bishon-deploy.sh
+```
+
+向导会按场景逐项询问：
+1. 部署模式（docker-online / docker-offline / bare-metal）
+2. host-dir 或源码目录路径
+3. 镜像源（ghcr.io / 阿里云 / 本地 tar）
+4. 模型源（在线下载 / 本地 tarball / 跳过）
+5. 确认部署
+
+**部署机只需 `--host-dir` 一个参数**（其他从相对路径自动找）。已有镜像/模型会自动跳过下载。配置存到 `<host-dir>/deploy.conf`，下次向导自动读取作为默认值。
+
+### 非交互模式（CI / 批量部署）
+
+```bash
+bash scripts/docker/bishon-deploy.sh \
+    --non-interactive --mode docker-online \
+    --host-dir /var/lib/bishon \
+    --release bishon-release-2.1.0.tar.gz \
+    --registry aliyun --models-source skip
+```
+
+`--dry-run` 跑完所有交互只打印计划不执行。
+
+### Windows 用户
+
+Bishon V2 在原生 Windows 上不保证依赖完整（paddlepaddle-gpu Windows wheel 不全）。**推荐 WSL2 + Ubuntu 22.04**：
+
+```powershell
+wsl --install -d Ubuntu-22.04
+# WSL 内：
+cd /mnt/i/Bishon/V2/dev
+bash scripts/docker/bishon-deploy.sh
+```
+
+向导检测到原生 Windows 会提示打开 WSL。`--native-windows` 强制继续（后果自负）。
+
+---
+
+## 老脚本（高级 / 可编程入口）
+
+向导内部调以下原子脚本，也可直接使用：
+
+### 镜像分发（在线用户跳过 make-release + 手动拷贝）
+
+```bash
+# 推到 ghcr.io + 阿里云（首次需要 docker login）
+bash scripts/docker/bishon-publish-image.sh
+
+# 部署机直接 pull（不需要 make-release 镜像 tar）
+bash scripts/docker/bishon-install.sh \
+    --host-dir /var/lib/bishon \
+    --release bishon-release-2.1.0.tar.gz \
+    --pull --registry aliyun
+```
+
+### 离线打包（开发机）
+
+```bash
+# --version 默认读 VERSION 文件
+bash scripts/docker/bishon-build.sh                # 构建 bishon-cuda 镜像
+bash scripts/docker/make-release.sh                # 打 env + 源码 + models + 镜像 tar
+ls dist/
+#   bishon-release-<ver>.tar.gz
+#   bishon-models-<ver>.tar.gz
+#   bishon-cuda-image-<ver>.tar
+#   *.sha256
+```
+
+### 详细老脚本说明
+
+[老脚本（保留供高级用法参考）](#) — 见下方章节。
+
+
 开发环境搭建（WSL ext4 + 模型符号链接等）见 [`dev-environment.md`](./dev-environment.md)。
 
 ## 目录

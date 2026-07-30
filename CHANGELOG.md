@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`scripts/docker/bishon-deploy.sh`** — top-level interactive deployment wizard. Covers three modes: `docker-online` (pull from ghcr.io or Aliyun), `docker-offline` (load local tar), `bare-metal` (no Docker). `--non-interactive` + flag-per-question for CI/batch deploy. `--dry-run` walks through everything without executing. Persists choices to `<host-dir>/deploy.conf` for next-run defaults. Detects native Windows and suggests WSL2.
+- **`scripts/docker/bishon-deploy-docker.sh`** — L2 module: orchestrates `install.sh` + `start.sh` for Docker modes. Forwards all relevant flags.
+- **`scripts/docker/bishon-deploy-bare-metal.sh`** — L2 module: `preflight --mode bare-metal` → optional `pip install -r requirements.txt` → `download-models.sh` → `start.sh`.
+- **`scripts/docker/bishon-publish-image.sh`** — manual one-shot push of locally built image to ghcr.io and/or Aliyun registry. `--registry ghcr|aliyun|both` (default both), `--vpc` switches Aliyun to VPC endpoint (faster from Aliyun ECS), `--no-latest` skips `:latest` tag. Reads `$GHCR_TOKEN` / `$ALIYUN_PWD` only if not already logged in via `~/.docker/config.json`.
+- **`scripts/docker/bishon-install.sh --pull` / `--registry`** — online image acquisition. Baked-in well-known registries: `ghcr` (`ghcr.io/dliting`), `aliyun` (`crpi-cpr1xsemy1pzwjoc.cn-beijing.personal.cr.aliyuncs.com/dliting`), `aliyun-vpc` (VPC endpoint). Supports custom URLs too.
+- **`scripts/docker/preflight.sh --mode`** — `release` (default) | `docker-online` | `docker-offline` | `bare-metal`. Docker image check now mode-aware (bare-metal skips entirely; docker-online just checks Docker availability).
 - **`scripts/download-models.sh`**: idempotent model downloader for new developers and deploy hosts. Defaults to `hf-mirror.com` (HuggingFace China mirror); PaddleOCR models auto-fetched via the `paddleocr` package. Flags: `--target`, `--dry-run`, `--offline <tar>`, `--skip-rerank`, `--skip-paddleocr`. Respects `HF_ENDPOINT`, `RERANK_REPO`, `BISHON_PY` env vars.
 - **Models tarball separation**: `make-release.sh` now produces `bishon-models-<ver>.tar.gz` as a standalone artifact, separate from the main release tarball. `bishon-install.sh --models <tar>` accepts it optionally — install without models is valid (Rerank disabled, OCR warns at startup).
 - **`make-release.sh --src-only`**: skips env + models + image; produces a tiny source-only tarball in ~5s for quick publish testing.
@@ -16,16 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`bishon-cuda:latest` tag**: `bishon-build.sh` now also tags the image as `latest` for CI/automation convenience.
 
 ### Changed
+- **`bishon-env/` renamed to `python-env/`** in the host-dir layout. Breaking change — existing v2.1.x deployments must re-run install. Affected files: `entrypoint.sh`, `Dockerfile.{cuda,ascend}`, `bishon-install.sh`, `bishon-publish.sh`, `make-release.sh`, `preflight.sh`, `docs/deployment.md`. (CHANGELOG keeps the historical reference under [2.1.0].)
+- **`bishon-build.sh` / `make-release.sh`** now default `--version` to the contents of the `VERSION` file at repo root. Single source of truth for the project; `--version <ver>` still works as override.
 - `make-release.sh` pre-flight checks refactored to delegate to `preflight.sh` (single source of truth).
 - `download-models.sh --dry-run` now reflects actual filesystem state: prints "would skip" for already-populated dirs instead of unconditionally saying "would download".
 
 ### Documentation
+- `docs/deployment.md` 重排：开头改为 wizard 入口 + 三模式对比表；老脚本降级为"高级用法"。
 - `README.md` Quick Start: new step 5 "Download model weights" pointing to `scripts/download-models.sh`.
 - `docs/dev-environment.md`: documents the script's flags and env vars; clarifies that `--target` only affects Reranker placement (PaddleOCR path is hardcoded by `model_config.py`).
 - `docs/deployment.md` "前置条件": clarifies three ways to acquire models (online via script, offline via tarball, or pre-existing dir copy).
 
 ### Test
-- `tests/scripts/test_download_models.bats`: 9 new cases covering syntax, defensive style, `--help`, `--dry-run`, `--offline` tarball extraction, idempotency, `HF_ENDPOINT` override, and unknown-flag exit code. Bats suite: 20 → 29.
+- `tests/scripts/test_bishon_deploy.bats`: 14 new cases covering wizard syntax/style, `--help`, `--non-interactive --dry-run` for all three modes, unknown-mode rejection, L2 module syntax + dry-runs, platform detection, and config persistence. Bats suite: 29 → 43.
+- `tests/scripts/test_download_models.bats`: 9 cases covering syntax, defensive style, `--help`, `--dry-run`, `--offline` tarball extraction, idempotency, `HF_ENDPOINT` override, and unknown-flag exit code.
 
 ### Operational
 - Git workflow: introduced `dev` branch for daily development; `main` reserved for tagged releases. CI now triggers on `main` + `dev` pushes.

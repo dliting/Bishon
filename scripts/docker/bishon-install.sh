@@ -202,7 +202,7 @@ else
     mkdir -p "$HOST_DIR/models"
     log "no models tarball provided; models/ will be empty."
     log "Install models tarball separately if needed with:"
-    log "  tar -xzf bishon-models-$VERSION.tar.gz -C $HOST_DIR"
+    log "  tar -xzf bishon-models-${TAG:-unknown}.tar.gz -C $HOST_DIR"
 fi
 
 mkdir -p "$HOST_DIR/scripts"

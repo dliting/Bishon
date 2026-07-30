@@ -164,6 +164,7 @@ exec bash scripts/bishon-deploy.sh "$@"
 DEPLOY_SH
 
 cp "$REPO_ROOT/.env.example" "$DIST/"
+cp "$REPO_ROOT/VERSION" "$DIST/"
 
 # --- 6. Main tarball ---------------------------------------------------------
 # Exclude other bundle artifacts (models tar, image tar, existing release tar)

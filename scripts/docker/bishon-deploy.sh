@@ -378,8 +378,14 @@ fi
 
 # --- preflight (informational; shows what's ready) --------------------------
 VERSION_FOR_PREFLIGHT="${TAG:-}"
-if [ -z "$VERSION_FOR_PREFLIGHT" ] && [ -f "$REPO_ROOT/VERSION" ]; then
-    VERSION_FOR_PREFLIGHT="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
+if [ -z "$VERSION_FOR_PREFLIGHT" ]; then
+    # In bundle context, VERSION lives at bundle root (copied by make-release.sh).
+    # In repo context, REPO_ROOT/VERSION is the source of truth.
+    if [ -n "$BUNDLE_DIR" ] && [ -f "$BUNDLE_DIR/VERSION" ]; then
+        VERSION_FOR_PREFLIGHT="$(tr -d '[:space:]' < "$BUNDLE_DIR/VERSION")"
+    elif [ -f "$REPO_ROOT/VERSION" ]; then
+        VERSION_FOR_PREFLIGHT="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
+    fi
 fi
 MODE_FOR_PREFLIGHT="${DEFAULT_MODE}"
 log "=== preflight (informational; failures don't block) ==="

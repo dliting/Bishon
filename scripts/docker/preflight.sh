@@ -36,7 +36,7 @@ echo "=== Bishon v2 preflight ==="
 
 # --- 1. bishon env ----------------------------------------------------------
 if $SRC_ONLY; then
-    p "bishon-env check skipped (--src-only)"
+    p "python-env check skipped (--src-only)"
 elif [ -d "$ENV_SRC/bin" ]; then
     p "bishon env at $ENV_SRC"
 else

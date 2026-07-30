@@ -3,7 +3,7 @@
 #
 # Responsibilities:
 #   1. Validate that the bind-mounted /opt/bishon-data has the expected layout.
-#   2. Symlink /opt/miniconda3/envs/bishon -> /opt/bishon-data/bishon-env so
+#   2. Symlink /opt/miniconda3/envs/bishon -> /opt/bishon-data/python-env so
 #      baked-in absolute paths inside the env resolve correctly.
 #   3. cd into the source dir and exec uvicorn.
 #
@@ -24,8 +24,8 @@ log() { echo "[entrypoint] $*"; }
 die() { echo "[entrypoint] FATAL: $*" >&2; exit 1; }
 
 # --- 1. Volume layout validation --------------------------------------------
-[ -d "$DATA_ROOT/bishon-env/bin" ] || \
-    die "$DATA_ROOT/bishon-env missing or incomplete. Run bishon-install.sh."
+[ -d "$DATA_ROOT/python-env/bin" ] || \
+    die "$DATA_ROOT/python-env missing or incomplete. Run bishon-install.sh."
 [ -f "$DATA_ROOT/.env" ] || \
     die "$DATA_ROOT/.env missing. Run bishon-install.sh."
 [ -d "$DATA_ROOT/bishon/bishon_kernel" ] || \
@@ -39,8 +39,8 @@ die() { echo "[entrypoint] FATAL: $*" >&2; exit 1; }
 # correctly inside the container.
 mkdir -p /opt/miniconda3/envs
 if [ ! -e "$ENV_LINK" ]; then
-    ln -s "$DATA_ROOT/bishon-env" "$ENV_LINK"
-    log "linked $ENV_LINK -> $DATA_ROOT/bishon-env"
+    ln -s "$DATA_ROOT/python-env" "$ENV_LINK"
+    log "linked $ENV_LINK -> $DATA_ROOT/python-env"
 elif [ ! -L "$ENV_LINK" ]; then
     die "$ENV_LINK exists but is not a symlink. Container state corrupted."
 fi
@@ -78,7 +78,7 @@ redirect_dir BISHON_DB
 redirect_dir logs
 
 # --- 3. Launch uvicorn ------------------------------------------------------
-[ -x "$PY" ] || die "$PY not executable. bishon-env may be corrupted."
+[ -x "$PY" ] || die "$PY not executable. python-env may be corrupted."
 cd "$DATA_ROOT/bishon"
 
 # Log resolved LLM/embedding endpoints (no keys) so ops can debug

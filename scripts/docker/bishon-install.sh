@@ -75,7 +75,7 @@ fs_type="$(bishon_validate_host_dir_fs "$HOST_DIR")" || exit 1
 log "filesystem OK ($fs_type)"
 
 # --- 2. Directory skeleton ---------------------------------------------------
-mkdir -p "$HOST_DIR"/{bishon-env,bishon,models}
+mkdir -p "$HOST_DIR"/{python-env,bishon,models}
 mkdir -p "$HOST_DIR"/BISHON_DB/{faiss,content}
 mkdir -p "$HOST_DIR"/logs/{debug_logs,qa_logs}
 
@@ -96,15 +96,15 @@ trap 'rm -rf "$TMP"' EXIT
 log "extracting $RELEASE_TAR ..."
 tar -xzf "$RELEASE_TAR" -C "$TMP"
 
-[ -d "$TMP/bishon-env/bin" ] || \
-    die "release tarball missing bishon-env/bin"
+[ -d "$TMP/python-env/bin" ] || \
+    die "release tarball missing python-env/bin"
 [ -d "$TMP/bishon/bishon_kernel" ] || \
     die "release tarball missing bishon/bishon_kernel"
 [ -f "$TMP/bishon/bishon_kernel/bishon_server/dist/bishon/index.html" ] || \
     die "release tarball missing bishon_kernel/bishon_server/dist/bishon/index.html"
 
-rm -rf "$HOST_DIR/bishon-env" "$HOST_DIR/bishon"
-mv "$TMP/bishon-env" "$HOST_DIR/bishon-env"
+rm -rf "$HOST_DIR/python-env" "$HOST_DIR/bishon"
+mv "$TMP/python-env" "$HOST_DIR/python-env"
 mv "$TMP/bishon"     "$HOST_DIR/bishon"
 
 # --- Models: optional separate tarball or legacy inline path --------------------

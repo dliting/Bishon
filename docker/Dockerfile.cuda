@@ -3,8 +3,8 @@
 # Design notes:
 #   - miniconda3 base lives in the image (tied to container glibc).
 #   - The bishon conda env is NOT baked in; it ships in the release tarball
-#     and is bind-mounted at /opt/bishon-data/bishon-env. The entrypoint
-#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-data/bishon-env so
+#     and is bind-mounted at /opt/bishon-data/python-env. The entrypoint
+#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-data/python-env so
 #     baked-in absolute paths inside the env still resolve.
 #   - Timezone is Asia/Shanghai (avoids container UTC vs business local-time skew).
 #   - HEALTHCHECK uses the in-process /api/health endpoint.

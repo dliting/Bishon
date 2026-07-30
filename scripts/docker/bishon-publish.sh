@@ -7,7 +7,7 @@
 # Atomically replaces (with timestamped backup, then deletes the backup):
 #   - bishon/           (source code)
 #   - models/           (model weights)
-#   - bishon-env/       (only if the new tarball contains one — rare)
+#   - python-env/       (only if the new tarball contains one — rare)
 #
 # NEVER touched:
 #   - .env              (user config)
@@ -47,9 +47,9 @@ die() { bishon_die "$@"; }
 [ -d "$HOST_DIR/bishon" ] || die "$HOST_DIR does not look installed (no bishon/ subdir). Run bishon-install.sh first."
 # Fail fast if other install artifacts are missing — publish cannot repair
 # them, and continuing would let bishon-start.sh fail later with a confusing
-# 'bishon-env/bin missing' or '.image-tag missing' error.
+# 'python-env/bin missing' or '.image-tag missing' error.
 [ -f "$HOST_DIR/.image-tag" ]     || die "$HOST_DIR/.image-tag missing. Was bishon-install.sh ever run?"
-[ -d "$HOST_DIR/bishon-env/bin" ] || die "$HOST_DIR/bishon-env/bin missing. Publish cannot repair a broken env; re-run bishon-install.sh."
+[ -d "$HOST_DIR/python-env/bin" ] || die "$HOST_DIR/python-env/bin missing. Publish cannot repair a broken env; re-run bishon-install.sh."
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 TS="$(date +%Y%m%d-%H%M%S)"
@@ -64,7 +64,7 @@ tar -xzf "$RELEASE_TAR" -C "$TMP_DIR"
 # These are information-only (consumed by the summary printout at the bottom).
 [ -d "$TMP_DIR/bishon" ]     && REPLACED_BISHON="yes" || REPLACED_BISHON="no"
 [ -d "$TMP_DIR/models" ]     && REPLACED_MODELS="yes" || REPLACED_MODELS="no"
-[ -d "$TMP_DIR/bishon-env" ] && REPLACED_BISHON_ENV="yes" || REPLACED_BISHON_ENV="no (not in tarball)"
+[ -d "$TMP_DIR/python-env" ] && REPLACED_BISHON_ENV="yes" || REPLACED_BISHON_ENV="no (not in tarball)"
 
 # Atomic replace helper: mv current aside, mv new in, then delete the backup.
 # Caller must check existence of $TMP_DIR/$name first; we assert here.
@@ -83,8 +83,8 @@ replace_dir() {
 replace_dir "bishon"
 replace_dir "models"
 [ "$REPLACED_BISHON_ENV" = "yes" ] && {
-    replace_dir "bishon-env"
-    log "NOTE: bishon-env replaced. If the image's miniconda3 base version"
+    replace_dir "python-env"
+    log "NOTE: python-env replaced. If the image's miniconda3 base version"
     log "      changed since install, rebuild the image too."
 }
 
@@ -94,7 +94,7 @@ cat <<EOF
 What was replaced:
    bishon/         $REPLACED_BISHON
    models/         $REPLACED_MODELS
-   bishon-env/     $REPLACED_BISHON_ENV
+   python-env/     $REPLACED_BISHON_ENV
 
 Preserved (NEVER touched):
    .env, BISHON_DB/, logs/, .image-tag, .accelerator

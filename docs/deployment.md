@@ -26,13 +26,13 @@
 |---|---|---|
 | `bishon-cuda:<version>` 镜像 | ~4 GiB | CUDA 12.1 runtime + Ubuntu 22.04 + 系统库 + 时区 + miniconda3 base（**无 envs**） |
 | `bishon-cuda-image-<version>.tar` | ~4 GiB | `docker save` 产出的镜像 tar |
-| `bishon-release-<version>.tar.gz` | ~5–7 GiB | `bishon-env/` + `bishon/` 源码 + `models/` + `scripts/` + `.env.example` |
+| `bishon-release-<version>.tar.gz` | ~5–7 GiB | `python-env/` + `bishon/` 源码 + `models/` + `scripts/` + `.env.example` |
 
 **目录布局**（部署机）：
 
 ```
 <host-dir>/                          ← 由 -v 挂载到容器 /opt/bishon-data
-├── bishon-env/                      ← 从 WSL envs/bishon 拷贝（可被 publish 升级）
+├── python-env/                      ← 从 WSL envs/bishon 拷贝（可被 publish 升级）
 ├── bishon/                          ← 应用源码（可被 publish 升级）
 ├── models/                          ← 模型权重（可被 publish 升级）
 ├── BISHON_DB/                       ← 运行时数据（永不被覆盖）
@@ -50,7 +50,7 @@
 
 容器入口（`docker/entrypoint.sh`）做三件事：
 1. 校验 `<host-dir>` 关键内容存在；
-2. 创建软链接 `/opt/miniconda3/envs/bishon → /opt/bishon-data/bishon-env`，让 env 里硬编码的绝对路径在容器内仍能解析；
+2. 创建软链接 `/opt/miniconda3/envs/bishon → /opt/bishon-data/python-env`，让 env 里硬编码的绝对路径在容器内仍能解析；
 3. `cd /opt/bishon-data/bishon && exec python -m uvicorn ...`。
 
 **`.env` 路径桥接**：`bishon_kernel/configs/model_config.py:13` 通过 `load_dotenv(root_path/.env)` 加载配置，`root_path` 推导为容器内 `/opt/bishon-data/bishon/`。但 `.env` 放在更上层（`/opt/bishon-data/.env`），原因：`bishon/` 会被 publish 替换，`.env` 放其内部有覆盖风险。桥接方式：`bishon-start.sh` 用 `docker run --env-file <host-dir>/.env` 把变量注入容器进程环境；`load_dotenv` 找不到 `bishon/.env` 时静默返回，不覆盖已注入的环境变量（python-dotenv 默认行为）。
@@ -155,7 +155,7 @@ bash scripts/docker/make-release.sh --version 2.1.0
 
 ```
 dist/
-├── bishon-release-2.1.0.tar.gz     # 发布包（含 bishon-env + 源码 + 模型 + 脚本）
+├── bishon-release-2.1.0.tar.gz     # 发布包（含 python-env + 源码 + 模型 + 脚本）
 └── bishon-cuda-image-2.1.0.tar     # docker save 产出的镜像 tar
 ```
 
@@ -176,7 +176,7 @@ bash bishon-install.sh \
 1. **文件系统校验**（[避坑指南 #2](#避坑指南对照表)）：
    - 拒绝 `/mnt/*`、`/media/*`、`/run/media/*` 路径（覆盖 WSL drvfs 与 Linux 自动挂载，SQLite WAL 会 I/O 错误）；
    - 拒绝 `9p|drvfs|tmpfs|overlay|smbfs|cifs` 文件系统；
-2. 创建目录骨架（`bishon-env/` `bishon/` `models/` `BISHON_DB/{faiss,content}` `logs/{debug_logs,qa_logs}`）；
+2. 创建目录骨架（`python-env/` `bishon/` `models/` `BISHON_DB/{faiss,content}` `logs/{debug_logs,qa_logs}`）；
 3. `docker load` 镜像 tar；
 4. 解压发布包，原子 mv 到 `<host-dir>/`；
 5. 仅当 `.env` 不存在时拷贝 `.env.example` 为 `.env`（**永不被覆盖**）；
@@ -215,14 +215,14 @@ bash /var/lib/bishon/scripts/bishon-stop.sh  --host-dir /var/lib/bishon
 bash /var/lib/bishon/scripts/bishon-start.sh --host-dir /var/lib/bishon
 ```
 
-`bishon-publish.sh` 原子替换 `bishon/`、`models/`（若新包内有 `bishon-env/` 也替换），**永远不动**：
+`bishon-publish.sh` 原子替换 `bishon/`、`models/`（若新包内有 `python-env/` 也替换），**永远不动**：
 
 - `.env`（用户配置）
 - `BISHON_DB/`（运行时数据）
 - `logs/`（运行时日志）
 - `.image-tag`、`.accelerator`
 
-如需升级 Python 依赖（新发布包含 `bishon-env/`），且镜像的 miniconda3 base 版本变了，**必须同时重新 build + load 镜像**。`bishon-install.sh` 不重新跑——它假设首次安装已完成；改用：
+如需升级 Python 依赖（新发布包含 `python-env/`），且镜像的 miniconda3 base 版本变了，**必须同时重新 build + load 镜像**。`bishon-install.sh` 不重新跑——它假设首次安装已完成；改用：
 
 ```bash
 docker load -i /path/to/bishon-cuda-image-2.1.1.tar   # 加载新镜像

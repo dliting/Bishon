@@ -2,7 +2,7 @@
 # make-release.sh — assemble the offline release bundle for Bishon V2.
 #
 # Produces under <repo-root>/dist/:
-#   bishon-release-<version>.tar.gz    — source + bishon-env + models + scripts + .env.example
+#   bishon-release-<version>.tar.gz    — source + python-env + models + scripts + .env.example
 #   bishon-cuda-image-<version>.tar    — docker save of bishon-cuda:<version>
 #
 # Usage:
@@ -13,7 +13,7 @@
 # first) — this script refuses to ship a release without its matching image.
 #
 # Hard constraint: WSL Ubuntu version MUST equal the image base (22.04), or
-# the baked-in .so files in bishon-env will fail to load in the container.
+# the baked-in .so files in python-env will fail to load in the container.
 
 set -euo pipefail
 
@@ -31,7 +31,7 @@ Usage: $0 --version <ver> [--conda-root /opt/miniconda3] [--src-only]
 
   --version <ver>      Image and release tarball version, e.g. 2.1.0.
   --conda-root <path>  Path to miniconda3 installation (def: /opt/miniconda3).
-  --src-only           Package source + scripts only; skip bishon-env, models,
+  --src-only           Package source + scripts only; skip python-env, models,
                        and the docker image tar. Fast (~5s) for quick publish
                        testing when only code changed.
 
@@ -75,17 +75,17 @@ rm -rf "$DIST"
 mkdir -p "$DIST"
 mkdir -p "$REPO_ROOT/dist"
 
-# --- 2. bishon-env (one env, slim) — skipped in --src-only ------------------
+# --- 2. python-env (one env, slim) — skipped in --src-only ------------------
 if $SRC_ONLY; then
-    log "--src-only: skipping bishon-env"
-    mkdir -p "$DIST/bishon-env"  # empty placeholder so tarball has the dir
+    log "--src-only: skipping python-env"
+    mkdir -p "$DIST/python-env"  # empty placeholder so tarball has the dir
 else
-    log "copying bishon-env (~$(du -sh "$ENV_SRC" | cut -f1))"
+    log "copying python-env (~$(du -sh "$ENV_SRC" | cut -f1))"
     rsync -a \
         --exclude '__pycache__' \
         --exclude '*.pyc' \
         --exclude '*.pyo' \
-        "$ENV_SRC/" "$DIST/bishon-env/"
+        "$ENV_SRC/" "$DIST/python-env/"
 fi
 
 # --- 3. Source code (MANIFEST-driven) ----------------------------------------

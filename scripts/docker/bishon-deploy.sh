@@ -204,14 +204,14 @@ ask_path() {
     if $NON_INTERACTIVE; then
         if [ -z "$default" ]; then
             if $DRY_RUN; then
-                log "INFO: $prompt (not specified — would fail in real deploy)"
+                echo "[deploy]   (not specified: $prompt)" >&2
                 return
             fi
             die "ask_path: $prompt (no default and --non-interactive)"
         fi
         if [ ! -e "$default" ]; then
             if $DRY_RUN; then
-                log "INFO: $prompt ($default not found — would fail in real deploy)"
+                echo "[deploy]   (not found: $prompt — $default)" >&2
                 return
             fi
             die "ask_path: $default does not exist"

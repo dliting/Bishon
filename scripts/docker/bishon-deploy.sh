@@ -416,23 +416,6 @@ if [ -z "$MODE" ]; then
 fi
 log "mode: $MODE"
 
-# Helper: auto-glob tarball in bundle dir if a path is not yet set.
-# Sets the named variable from a glob pattern; aborts if 0 or >1 matches.
-glob_bundle() {
-    local var="$1" bundle="$2" pattern="$3" descr="$4"
-    if [ -n "${!var}" ]; then return 0; fi     # already set
-    if [ -z "$bundle" ]; then return 0; fi      # no bundle dir to glob in
-    local matches
-    matches=$(ls "$bundle"/$pattern 2>/dev/null | sort)
-    case "$(echo "$matches" | wc -l)" in
-        0)  log "no $descr found in $bundle/$pattern — will prompt" ;;
-        1)  printf -v "$var" "%s" "$matches"
-            log "auto-detected $descr: ${!var}"
-            ;;
-        *)  log "multiple $descr found in $bundle — will prompt" ;;
-    esac
-}
-
 case "$MODE" in
     docker-online|docker-offline)
         [ -n "$HOST_DIR" ] || HOST_DIR=$(ask_required \
@@ -442,7 +425,9 @@ case "$MODE" in
 
         # For offline mode: try to auto-detect a "bundle dir" containing
         # release/image/models tarballs. Look in $PWD, $HOST_DIR's parent,
-        # and the script's own directory.
+        # and the script's own directory. (Bundle detection already ran in the
+        # environment-detection section above; this block only supplements if
+        # BUNDLE_DIR somehow wasn't found then but is discoverable now.)
         if [ "$MODE" = "docker-offline" ] && [ -z "$BUNDLE_DIR" ]; then
             for cand in "$PWD" "$(dirname "$HOST_DIR")" "$(dirname "$0")"; do
                 if ls "$cand"/bishon-release-*.tar.gz >/dev/null 2>&1; then
@@ -451,11 +436,6 @@ case "$MODE" in
                     break
                 fi
             done
-        fi
-        if [ -n "$BUNDLE_DIR" ]; then
-            glob_bundle RELEASE_TAR "$BUNDLE_DIR" 'bishon-release-*.tar.gz' 'release tarball'
-            glob_bundle IMAGE_TAR   "$BUNDLE_DIR" 'bishon-cuda-image-*.tar' 'image tarball'
-            glob_bundle MODELS_TAR  "$BUNDLE_DIR" 'bishon-models-*.tar.gz'  'models tarball'
         fi
 
         [ -n "$RELEASE_TAR" ] || RELEASE_TAR=$(ask_path \

@@ -515,7 +515,7 @@ case "$MODE" in
               log "  release:       $RELEASE_TAR"
               log "  image source:  $IMAGE_SOURCE"
               [ "$IMAGE_SOURCE" = "pull" ] && log "  registry:      $REGISTRY"
-              [ -n "$IMAGE_TAR" ] && log "  image tar:     $IMAGE_TAR"
+              [ "$IMAGE_SOURCE" = "load" ] && [ -n "$IMAGE_TAR" ] && log "  image tar:     $IMAGE_TAR"
               ;;
     bare-metal) log "  source-dir:    $SOURCE_DIR"
                 log "  conda env:     $CONDA_ENV"

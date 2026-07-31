@@ -1,17 +1,34 @@
 #!/usr/bin/env bats
-# Tests for Bishon V2 start.sh
+# Tests for Bishon V2 start scripts (Docker + bare-metal wrappers)
 
-@test "start.sh exists and is executable" {
-    [ -f "$BATS_TEST_DIRNAME/../../start.sh" ]
+ROOT="$BATS_TEST_DIRNAME/../.."
+
+@test "start-docker.sh exists and passes syntax" {
+    [ -f "$ROOT/start-docker.sh" ]
+    run bash -n "$ROOT/start-docker.sh"
+    [ "$status" -eq 0 ]
 }
 
-@test "start.sh passes syntax check" {
-    run bash -n "$BATS_TEST_DIRNAME/../../start.sh"
+@test "stop-docker.sh exists and passes syntax" {
+    [ -f "$ROOT/stop-docker.sh" ]
+    run bash -n "$ROOT/stop-docker.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "start-bare-metal.sh exists and passes syntax" {
+    [ -f "$ROOT/start-bare-metal.sh" ]
+    run bash -n "$ROOT/start-bare-metal.sh"
+    [ "$status" -eq 0 ]
+}
+
+@test "stop-bare-metal.sh exists and passes syntax" {
+    [ -f "$ROOT/stop-bare-metal.sh" ]
+    run bash -n "$ROOT/stop-bare-metal.sh"
     [ "$status" -eq 0 ]
 }
 
 @test "necessary directories exist or can be created" {
-    cd "$BATS_TEST_DIRNAME/../.."
+    cd "$ROOT"
     mkdir -p logs/debug_logs logs/qa_logs BISHON_DB/faiss BISHON_DB/content
     [ -d "logs/debug_logs" ]
     [ -d "logs/qa_logs" ]

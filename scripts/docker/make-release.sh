@@ -9,7 +9,7 @@
 #   bash scripts/docker/make-release.sh --version 2.1.0 [--conda-root /opt/miniconda3]
 #
 # Run inside WSL (Ubuntu 22.04) with the bishon conda env already created and
-# all Python deps installed. The image must already exist (run build.sh
+# all Python deps installed. The image must already exist (run build-image.sh
 # first) — this script refuses to ship a release without its matching image.
 #
 # Hard constraint: WSL Ubuntu version MUST equal the image base (22.04), or
@@ -68,7 +68,7 @@ EOF
     esac
 done
 
-# Default VERSION from file if not passed on CLI (matches build.sh).
+# Default VERSION from file if not passed on CLI (matches build-image.sh).
 if [ -z "$VERSION" ]; then
     VERSION_FILE="$REPO_ROOT/VERSION"
     [ -f "$VERSION_FILE" ] || { echo "FATAL: $VERSION_FILE missing and --version not given" >&2; exit 1; }
@@ -86,8 +86,8 @@ IMAGE_TAR="$DIST/bishon-cuda-image-$VERSION.tar"
 IMAGE_TAG="bishon-cuda:$VERSION"
 
 export BISHON_LOG_TAG=release
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
@@ -97,7 +97,7 @@ PREFLIGHT_ARGS=(--version "$VERSION")
 if $SKIP_ENV && $SKIP_MODELS && $SKIP_IMAGE; then
     PREFLIGHT_ARGS+=(--src-only)
 fi
-bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
+bash "$(dirname "$0")/../common/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
     die "preflight failed. Fix the issues above before running make-release.sh."
 
 # --- 1. Stage directory ------------------------------------------------------

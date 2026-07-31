@@ -114,12 +114,12 @@ cd front_end && npm ci --legacy-peer-deps && npm run build && cd ..
 cp -r front_end/dist bishon_kernel/bishon_server/
 
 # 下载模型（Qwen3-Reranker 0.6B ~1.2 GB + PaddleOCR v3 ~100 MB）
-bash scripts/download-models.sh
+bash scripts/common/download-models.sh
 # 或先 dry-run 看源：
-# bash scripts/download-models.sh --dry-run
+# bash scripts/common/download-models.sh --dry-run
 ```
 
-`scripts/download-models.sh` 默认从国内 HuggingFace 镜像（`hf-mirror.com`）拉 Reranker，触发 PaddleOCR 自动下载。脚本支持：
+`scripts/common/download-models.sh` 默认从国内 HuggingFace 镜像（`hf-mirror.com`）拉 Reranker，触发 PaddleOCR 自动下载。脚本支持：
 - `--target <dir>` 自定义模型目录（默认 `./models`）
 - `--skip-rerank` / `--skip-paddleocr` 跳过其中一个
 - `--offline <tar.gz>` 从已有的 models tarball 解压（内网部署用）
@@ -198,7 +198,7 @@ bash run_all_tests.sh
 
 ```bash
 # 构建镜像（联网，下载 cuda base + miniconda）
-bash scripts/docker/build.sh --version 2.1.0
+bash scripts/docker/build-image.sh --version 2.1.0
 
 # 制作离线发布包（含 env、源码、模型、镜像 tar）
 bash scripts/docker/make-release.sh --version 2.1.0
@@ -217,7 +217,7 @@ ls -la dist/
 # 开发机：重新打包
 bash scripts/docker/make-release.sh --version <new>
 # 把新 tarball 拷到部署机，再
-bash <host-dir>/scripts/publish.sh --host-dir <host-dir> --release <new-tar>
+bash <host-dir>/scripts/upgrade.sh --host-dir <host-dir> --release <new-tar>
 bash <host-dir>/scripts/stop.sh  --host-dir <host-dir>
 bash <host-dir>/scripts/start.sh --host-dir <host-dir>
 ```

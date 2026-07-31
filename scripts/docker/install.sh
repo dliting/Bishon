@@ -12,7 +12,7 @@
 #   - .env (only created if missing)
 #   - BISHON_DB/  (all runtime data)
 #   - logs/
-# For an in-place code-only upgrade use publish.sh instead.
+# For an in-place code-only upgrade use upgrade.sh instead.
 
 set -euo pipefail
 
@@ -74,8 +74,8 @@ EOF
 done
 
 export BISHON_LOG_TAG=install
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 # Local aliases so existing `log`/`die` call sites work unchanged.
 log() { bishon_log "$@"; }

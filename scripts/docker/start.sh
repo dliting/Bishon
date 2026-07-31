@@ -40,8 +40,8 @@ done
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
 
 export BISHON_LOG_TAG=start
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
@@ -120,7 +120,7 @@ for i in $(seq 1 90); do
         if [ "$http_code" != "200" ]; then
             dist_index="$HOST_DIR/bishon/bishon_kernel/bishon_server/dist/bishon/index.html"
             if [ ! -f "$dist_index" ]; then
-                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm ci && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + publish.sh."
+                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm ci && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + upgrade.sh."
             fi
             die "/bishon/ returned HTTP $http_code despite $dist_index existing. Check container logs: docker logs bishon"
         fi

@@ -44,8 +44,7 @@ cd front_end && npm ci && npm run build && cd ..
 ## Run
 
 ```bash
-./start.sh        # Linux / WSL
-start.bat         # Windows
+./start-bare-metal.sh        # Linux / WSL
 ```
 
 Open <http://localhost:8777/bishon/> for the UI.

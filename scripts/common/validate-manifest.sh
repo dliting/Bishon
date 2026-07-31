@@ -33,7 +33,7 @@ EOF
 done
 
 export BISHON_LOG_TAG=manifest
-source "$(dirname "$0")/lib/common.sh"
+source "$(dirname "$0")/utils.sh"
 
 MANIFEST="$REPO_ROOT/release/MANIFEST"
 [ -f "$MANIFEST" ] || bishon_die "$MANIFEST not found."

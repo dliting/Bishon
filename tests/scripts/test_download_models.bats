@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
-# Bats tests for scripts/download-models.sh
+# Bats tests for scripts/common/download-models.sh
 #
 # Coverage focuses on flags and idempotency. Does NOT perform actual
 # network downloads (would use 1.3 GB and depend on hf-mirror.com uptime).
 
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-DL="$REPO_ROOT/scripts/download-models.sh"
+DL="$REPO_ROOT/scripts/common/download-models.sh"
 
 @test "download-models.sh exists and is executable" {
     [ -f "$DL" ]

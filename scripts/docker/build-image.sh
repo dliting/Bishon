@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# build.sh — build the Bishon V2 container image.
+# build-image.sh — build the Bishon V2 container image.
 #
 # Usage:
-#   bash scripts/docker/build.sh --version <ver> [--accelerator cuda]
+#   bash scripts/docker/build-image.sh --version <ver> [--accelerator cuda]
 #
 # Output:
 #   Image tagged `bishon-<accelerator>:<version>`, e.g. bishon-cuda:2.1.0.
@@ -48,8 +48,8 @@ fi
 DOCKERFILE="$REPO_ROOT/docker/Dockerfile.$ACC"
 
 export BISHON_LOG_TAG=build
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 

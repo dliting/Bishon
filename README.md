@@ -139,8 +139,8 @@ Bishon/V2/
 ├── logs/                   Logs
 ├── .env                    Configuration (gitignored; copy from .env.example)
 ├── requirements.txt        Python dependencies
-├── start.sh                Linux startup script
-└── start.bat               Windows startup script
+├── start.sh                Linux/WSL startup script (wrapper → scripts/start.sh)
+└── stop.sh                 Linux/WSL stop script (wrapper → scripts/stop.sh)
 ```
 
 ## Requirements
@@ -173,8 +173,7 @@ bash scripts/download-models.sh
 # PaddleOCR v3 models auto-download via paddleocr package.
 
 # 6. Run
-./start.sh        # Linux / WSL
-start.bat         # Windows
+./start-bare-metal.sh        # Linux / WSL (or bash scripts/docker/deploy.sh for Docker)
 ```
 
 The service is now live at <http://localhost:8777>. Open <http://localhost:8777/bishon/>
@@ -259,7 +258,7 @@ on the deploy side.
 
 ```bash
 # Developer side (WSL Ubuntu 22.04, bishon conda env present)
-bash scripts/docker/build.sh   --version 2.1.0
+bash scripts/docker/build-image.sh   --version 2.1.0
 bash scripts/docker/make-release.sh   --version 2.1.0
 
 # Deploy side (any Linux host with Docker + NVIDIA Container Toolkit)

@@ -145,7 +145,7 @@ case "$MODE" in
             if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
                 p "docker image: $IMAGE_TAG"
             else
-                f "docker image $IMAGE_TAG not found. Run: build.sh --version $VERSION"
+                f "docker image $IMAGE_TAG not found. Run: build-image.sh --version $VERSION"
             fi
         else
             p "docker image check skipped (no --version given)"

@@ -463,7 +463,7 @@ case "$MODE" in
                 fi
             fi
             [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask_path \
-                "image tarball path? (from build.sh + docker save)" \
+                "image tarball path? (from build-image.sh + docker save)" \
                 "$IMAGE_TAR")
         fi
 

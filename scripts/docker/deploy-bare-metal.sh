@@ -4,7 +4,7 @@
 # L2 deployment module: Bare-metal mode. No Docker. Just:
 #   1. preflight --mode bare-metal (env, WSL Ubuntu, deps)
 #   2. pip install -r requirements.txt (if --install-deps)
-#   3. bash scripts/download-models.sh (if --models-source online)
+#   3. bash scripts/common/download-models.sh (if --models-source online)
 #   4. bash start.sh
 #
 # Usually invoked by deploy.sh (the wizard). Can also be called
@@ -129,13 +129,13 @@ case "$MODELS_SOURCE" in
         log "skipping models (operator's responsibility)"
         ;;
     online)
-        bash "$SOURCE_DIR/scripts/download-models.sh" --target "$SOURCE_DIR/models" \
+        bash "$SOURCE_DIR/scripts/common/download-models.sh" --target "$SOURCE_DIR/models" \
             || die "download-models.sh failed"
         ;;
     tarball)
         [ -n "$MODELS_TAR" ] || die "--models <tar> required with --models-source tarball"
         [ -f "$MODELS_TAR" ] || die "models tar not found: $MODELS_TAR"
-        bash "$SOURCE_DIR/scripts/download-models.sh" --target "$SOURCE_DIR/models" --offline "$MODELS_TAR" \
+        bash "$SOURCE_DIR/scripts/common/download-models.sh" --target "$SOURCE_DIR/models" --offline "$MODELS_TAR" \
             || die "models extraction failed"
         ;;
     *) die "unknown --models-source: $MODELS_SOURCE (use online|tarball|skip)" ;;

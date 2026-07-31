@@ -18,16 +18,15 @@ tests
 docs
 mkdocs.yml
 
-# === Image build + deploy ===
+# === Image build ===
 docker
-scripts
 
-# === Bare-metal entry wrappers (delegate to scripts/) ===
-start-docker.sh
-stop-docker.sh
-start-bare-metal.sh
-stop-bare-metal.sh
-run_all_tests.sh
+# NOTE: `scripts/` and the root wrappers (`start-docker.sh`, `stop-docker.sh`,
+# `start-bare-metal.sh`, `stop-bare-metal.sh`, `run_all_tests.sh`, `deploy.sh`)
+# are NOT listed here. make-release.sh copies them to the bundle root so the
+# bundle is self-deployable (operator runs `bash deploy.sh` from bundle root).
+# Listing them here too would create duplicate copies under `bishon/` that
+# drift apart from the root-level ones.
 
 # === Python project ===
 pyproject.toml

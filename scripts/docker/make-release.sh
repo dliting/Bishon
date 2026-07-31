@@ -168,15 +168,24 @@ else
 fi
 
 # --- 5. Deploy bundle layout (self-contained, drop-in deployable) ------------
+# Bundle root layout:
+#   deploy.sh, start-docker.sh, ..., run_all_tests.sh   ← operator entry
+#   scripts/{common,docker,bare-metal}/                 ← invoked by deploy.sh
+# These are NOT under bishon/ — bishon/ is the runtime source (kernel, frontend,
+# tests, docs, etc.) only.
 mkdir -p "$DIST/scripts"
 cp -a "$REPO_ROOT/scripts/common" "$DIST/scripts/"
 cp -a "$REPO_ROOT/scripts/docker" "$DIST/scripts/"
 cp -a "$REPO_ROOT/scripts/bare-metal" "$DIST/scripts/"
 cp "$REPO_ROOT/scripts/run_all_tests.sh" "$DIST/scripts/"
-rm -f "$DIST/scripts/docker/deploy-entry-wrapper.sh.in"
 
-# Copy root deploy.sh as bundle entry point
-cp "$REPO_ROOT/deploy.sh" "$DIST/deploy.sh"
+# Root-level operator entry points
+cp "$REPO_ROOT/deploy.sh"               "$DIST/"
+cp "$REPO_ROOT/start-docker.sh"         "$DIST/"
+cp "$REPO_ROOT/stop-docker.sh"          "$DIST/"
+cp "$REPO_ROOT/start-bare-metal.sh"     "$DIST/"
+cp "$REPO_ROOT/stop-bare-metal.sh"      "$DIST/"
+cp "$REPO_ROOT/run_all_tests.sh"        "$DIST/"
 
 cp "$REPO_ROOT/.env.example" "$DIST/"
 cp "$REPO_ROOT/VERSION" "$DIST/"

@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# deploy.sh — Bishon V2 部署入口（bundle 根 wrapper）。
-# 此文件由 make-release.sh 复制到发布包根目录。
-set -euo pipefail
-cd "$(dirname "$0")"
-exec bash deploy.sh "$@"

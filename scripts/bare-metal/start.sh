@@ -1,11 +1,23 @@
 #!/bin/bash
 # Bishon V2 startup script (Linux / WSL).
 # Knowledge-base service — standalone launch.
+#
+# Usage: bash start.sh [--source-dir <path>]
+#   --source-dir defaults to the project root (two levels up from this script).
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+DEFAULT_SOURCE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SOURCE_DIR="$DEFAULT_SOURCE_DIR"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --source-dir) SOURCE_DIR="$2"; shift 2 ;;
+        -h|--help) sed -n '2,6p' "$0"; exit 0 ;;
+        *) echo "unknown arg: $1" >&2; exit 1 ;;
+    esac
+done
+cd "$SOURCE_DIR"
 
 # Activate the conda environment.
 CONDA_SH=""

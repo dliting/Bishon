@@ -119,6 +119,6 @@ Preserved (NEVER touched):
    .env, BISHON_DB/, logs/, .image-tag, .accelerator
 
 Next step — restart the container:
-   bash $HOST_DIR/scripts/stop.sh  --host-dir $HOST_DIR
-   bash $HOST_DIR/scripts/start.sh --host-dir $HOST_DIR
+   bash $HOST_DIR/scripts/docker/stop.sh  --host-dir $HOST_DIR
+   bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
 EOF

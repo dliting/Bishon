@@ -231,5 +231,5 @@ Next steps:
   1. Edit $HOST_DIR/.env — set OPENAI_API_BASE and EMBEDDING_API_BASE to
      explicit reachable URLs (NOT host.docker.internal).
   2. Start the service:
-       bash $HOST_DIR/scripts/start.sh --host-dir $HOST_DIR
+       bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
 EOF

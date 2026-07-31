@@ -9,7 +9,12 @@ BISHON_DB/
 logs/
 
 # Models (download separately)
+# Match both real directory (`models/`) and the WSL symlink (`models` → models-shared).
 models/
+models
+
+# Release build output (make-release.sh writes here)
+dist/
 
 # IDE
 .idea/

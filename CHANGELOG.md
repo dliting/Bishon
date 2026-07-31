@@ -8,34 +8,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **`scripts/docker/deploy.sh`** — top-level interactive deployment wizard. Covers three modes: `docker-online` (pull from ghcr.io or Aliyun), `docker-offline` (load local tar), `bare-metal` (no Docker). `--non-interactive` + flag-per-question for CI/batch deploy. `--dry-run` walks through everything without executing. Persists choices to `<host-dir>/deploy.conf` for next-run defaults. Detects native Windows and suggests WSL2.
-- **`scripts/docker/deploy-docker.sh`** — L2 module: orchestrates `install.sh` + `start.sh` for Docker modes. Forwards all relevant flags.
-- **`scripts/docker/deploy-bare-metal.sh`** — L2 module: `preflight --mode bare-metal` → optional `pip install -r requirements.txt` → `download-models.sh` → `start.sh`.
+- **Root `deploy.sh` — 4-step interactive wizard entry point.** Single command (`bash deploy.sh`) covers three modes: `docker-online` (pull from ghcr.io or Aliyun), `docker-offline` (load local tar), `bare-metal` (no Docker). `--non-interactive` + flag-per-question for CI/batch deploy; `--dry-run` walks through everything without executing. Detects native Windows and suggests WSL2. Bundle-aware: detects `bishon-release-*.tar.gz` next to the script and adapts defaults. Persists choices to `<host-dir>/deploy.conf` for next-run defaults (skipped under `--dry-run`).
+- **`scripts/common/wizard.sh`** — interactive gather module sourced by root `deploy.sh`. Implements 4-step numbered flow (mode → inputs → outputs → confirm) and the `ask` / `ask_required` / `ask_path` / `ask_choice` / `glob_bundle` helpers. No dispatch logic — wizard.sh only sets variables; deploy.sh dispatches directly to L1 install/start scripts.
+- **Four root wrappers — `start-docker.sh`, `stop-docker.sh`, `start-bare-metal.sh`, `stop-bare-metal.sh`** — each a 3-line `exec bash scripts/<mode>/<verb>.sh "$@" redirect. Mode is now obvious from the filename, eliminating the prior ambiguity where `start.sh` meant different things depending on directory.
+- **Log path hints in start scripts** — after successful health check, both `scripts/docker/start.sh` and `scripts/bare-metal/start.sh` print a short block listing the Web/API URLs, the log file paths (container, app debug log, qa log), and the stop/upgrade commands. Operators no longer need to grep `docs/` to find the logs.
 - **`scripts/docker/publish-image.sh`** — manual one-shot push of locally built image to ghcr.io and/or Aliyun registry. `--registry ghcr|aliyun|both` (default both), `--vpc` switches Aliyun to VPC endpoint (faster from Aliyun ECS), `--no-latest` skips `:latest` tag. Reads `$GHCR_TOKEN` / `$ALIYUN_PWD` only if not already logged in via `~/.docker/config.json`.
 - **`scripts/docker/install.sh --pull` / `--registry`** — online image acquisition. Baked-in well-known registries: `ghcr` (`ghcr.io/dliting`), `aliyun` (`crpi-cpr1xsemy1pzwjoc.cn-beijing.personal.cr.aliyuncs.com/dliting`), `aliyun-vpc` (VPC endpoint). Supports custom URLs too.
-- **`scripts/docker/preflight.sh --mode`** — `release` (default) | `docker-online` | `docker-offline` | `bare-metal`. Docker image check now mode-aware (bare-metal skips entirely; docker-online just checks Docker availability).
-- **`scripts/download-models.sh`**: idempotent model downloader for new developers and deploy hosts. Defaults to `hf-mirror.com` (HuggingFace China mirror); PaddleOCR models auto-fetched via the `paddleocr` package. Flags: `--target`, `--dry-run`, `--offline <tar>`, `--skip-rerank`, `--skip-paddleocr`. Respects `HF_ENDPOINT`, `RERANK_REPO`, `BISHON_PY` env vars.
+- **`scripts/common/preflight.sh --mode`** — `release` (default) | `docker-online` | `docker-offline` | `bare-metal`. Docker image check is mode-aware (bare-metal skips entirely; docker-online just checks Docker availability). Also gained `--src-only` sub-mode for release-packaging checks.
+- **`scripts/common/download-models.sh`**: idempotent model downloader for new developers and deploy hosts. Defaults to `hf-mirror.com` (HuggingFace China mirror); PaddleOCR models auto-fetched via the `paddleocr` package. Flags: `--target`, `--dry-run`, `--offline <tar>`, `--skip-rerank`, `--skip-paddleocr`. Respects `HF_ENDPOINT`, `RERANK_REPO`, `BISHON_PY` env vars.
 - **Models tarball separation**: `make-release.sh` now produces `bishon-models-<ver>.tar.gz` as a standalone artifact, separate from the main release tarball. `install.sh --models <tar>` accepts it optionally — install without models is valid (Rerank disabled, OCR warns at startup).
-- **`make-release.sh --src-only`**: skips env + models + image; produces a tiny source-only tarball in ~5s for quick publish testing.
+- **`make-release.sh --skip-env --skip-models --skip-image`**: when all three skips are passed, produces a tiny source-only tarball in ~5s for quick publish testing. Useful for iterating on bundle layout without waiting on the 12 GB env/models/image copy.
 - **SHA256 checksums**: every tarball now ships with a matching `.sha256` file for deploy-side integrity verification.
-- **`scripts/docker/preflight.sh`**: standalone release-readiness checker (env presence, WSL Ubuntu version, env imports, frontend dist, paddleocr models, docker image). Called by `make-release.sh`; also usable ad-hoc.
-- **`bishon-cuda:latest` tag**: `build.sh` now also tags the image as `latest` for CI/automation convenience.
+- **`bishon-cuda:latest` tag**: `build-image.sh` now also tags the image as `latest` for CI/automation convenience.
 
 ### Changed
-- **`bishon-env/` renamed to `python-env/`** in the host-dir layout. Breaking change — existing v2.1.x deployments must re-run install. Affected files: `entrypoint.sh`, `Dockerfile.{cuda,ascend}`, `install.sh`, `publish.sh`, `make-release.sh`, `preflight.sh`, `docs/deployment.md`. (CHANGELOG keeps the historical reference under [2.1.0].)
-- **`build.sh` / `make-release.sh`** now default `--version` to the contents of the `VERSION` file at repo root. Single source of truth for the project; `--version <ver>` still works as override.
+- **Restructured `scripts/` into a three-layer layout**: `scripts/common/` (shared utilities — `utils.sh`, `wizard.sh`, `preflight.sh`, `validate-manifest.sh`, `download-models.sh`), `scripts/docker/` (Docker-only — `install.sh`, `start.sh`, `stop.sh`, `upgrade.sh`, `uninstall.sh`, `build-image.sh`, `publish-image.sh`, `make-release.sh`), `scripts/bare-metal/` (bare-metal-only — `start.sh`, `stop.sh`). Replaces the old `scripts/docker/lib/` shared-helper layout. No backwards compatibility — existing v2.1.x deployments must re-clone or update their scripts path.
+- **Eliminated the L2 orchestrator layer.** `scripts/docker/deploy-docker.sh` and `scripts/docker/deploy-bare-metal.sh` are deleted; the dispatch logic (mode → install/start call sequence) now lives inline in root `deploy.sh`'s `case "$MODE"` block, ~30 lines.
+- **Renamed for clarity.**
+  - `scripts/docker/build.sh` → `scripts/docker/build-image.sh` (was confused with `make-release.sh`).
+  - `scripts/docker/publish.sh` → `scripts/docker/upgrade.sh` (publish means release-packaging, not in-place upgrade).
+  - `scripts/docker/lib/common.sh` → `scripts/common/utils.sh`.
+  - `scripts/docker/{preflight,validate-manifest}.sh` → `scripts/common/`.
+  - `scripts/download-models.sh` → `scripts/common/download-models.sh`.
+  - `scripts/{start,stop}.sh` → `scripts/bare-metal/{start,stop}.sh`.
+- **`bishon-env/` renamed to `python-env/`** in the host-dir layout. Breaking change — existing v2.1.x deployments must re-run install. Affected files: `entrypoint.sh`, `Dockerfile.{cuda,ascend}`, `install.sh`, `make-release.sh`, `preflight.sh`, `docs/deployment.md`. (CHANGELOG keeps the historical reference under [2.1.0].)
+- **`build-image.sh` / `make-release.sh`** now default `--version` to the contents of the `VERSION` file at repo root. Single source of truth for the project; `--version <ver>` still works as override.
+- **`make-release.sh` bundle layout**: now copies the full `scripts/{common,docker,bare-metal}` tree + the root `deploy.sh` (was: `scripts/docker/.` only + heredoc-generated deploy wrapper). Bundle operators get the same `deploy.sh` experience as a developer clone.
+- **`make-release.sh --force` semantics**: rsync-based overwrite in place (only changed files replaced). No `rm -rf`. `--merge` flag removed (overlapping semantics with `--force`).
 - `make-release.sh` pre-flight checks refactored to delegate to `preflight.sh` (single source of truth).
 - `download-models.sh --dry-run` now reflects actual filesystem state: prints "would skip" for already-populated dirs instead of unconditionally saying "would download".
+- `deploy.conf` save now explicitly gated by `! $DRY_RUN` — previously a default-on `--save-config` could write the file even under `--dry-run`, breaking the "side-effect-free" contract of dry-runs.
+
+### Removed
+- `scripts/docker/deploy.sh` (moved to repo root, rewritten as wizard entry).
+- `scripts/docker/deploy-docker.sh` (L2 module; dispatch merged into root `deploy.sh`).
+- `scripts/docker/deploy-bare-metal.sh` (L2 module; dispatch merged into root `deploy.sh`).
+- Root `start.sh` and `stop.sh` (replaced by the four mode-specific wrappers).
+- All Windows `.bat` wrappers (WSL2-only policy on Windows hosts; `.bat` files were half-broken and encouraged unsupported usage paths).
+- `scripts/docker/lib/` directory (helpers relocated to `scripts/common/`).
+- `make-release.sh --merge` flag (use `--force`).
+- `scripts/docker/deploy-entry-wrapper.sh.in` (bundle now ships the real root `deploy.sh`).
 
 ### Documentation
+- `docs/deployment.md` — added a **quick-reference table** at the top of the lifecycle section: one row per operation (deploy/start/stop/upgrade/uninstall/log) × one column per mode (Docker offline / Docker online / Bare-metal). Operators can find the right command in seconds without reading prose.
 - `docs/deployment.md` 重排：开头改为 wizard 入口 + 三模式对比表；老脚本降级为"高级用法"。
-- `README.md` Quick Start: new step 5 "Download model weights" pointing to `scripts/download-models.sh`.
-- `docs/dev-environment.md`: documents the script's flags and env vars; clarifies that `--target` only affects Reranker placement (PaddleOCR path is hardcoded by `model_config.py`).
+- `README.md` — project-layout block updated to show `deploy.sh`, the four root wrappers, and the `scripts/{common,docker,bare-metal}/` tree (was: two root wrappers + flat `scripts/`).
+- `README.md` Quick Start: new step 5 "Download model weights" pointing to `scripts/common/download-models.sh`.
+- `docs/dev-environment.md`: documents the downloader's flags and env vars; clarifies that `--target` only affects Reranker placement (PaddleOCR path is hardcoded by `model_config.py`).
 - `docs/deployment.md` "前置条件": clarifies three ways to acquire models (online via script, offline via tarball, or pre-existing dir copy).
 
 ### Test
-- `tests/scripts/test_bishon_deploy.bats`: 14 new cases covering wizard syntax/style, `--help`, `--non-interactive --dry-run` for all three modes, unknown-mode rejection, L2 module syntax + dry-runs, platform detection, and config persistence. Bats suite: 29 → 43.
+- `tests/scripts/test_deploy.bats` (renamed from `test_bishon_deploy.bats`): 16 cases covering wizard syntax/style, `--help`, `--non-interactive --dry-run` for all three modes, unknown-mode rejection, dry-run side-effect-free contract (I1 regression), platform detection (`--native-windows`), and config-persistence guards. All invocations pass `--native-windows` to skip the WSL-only check in CI.
 - `tests/scripts/test_download_models.bats`: 9 cases covering syntax, defensive style, `--help`, `--dry-run`, `--offline` tarball extraction, idempotency, `HF_ENDPOINT` override, and unknown-flag exit code.
+- `tests/scripts/test_docker_scripts.bats`: 16 cases — paths updated for the `common/` split (validate-manifest, utils).
+- `tests/scripts/test_start_sh.bats`: 6 cases — now exercises all four root wrappers (`start-docker`, `stop-docker`, `start-bare-metal`, `stop-bare-metal`).
+- Bats suite totals: **29 → 47 cases.**
 
 ### Operational
 - Git workflow: introduced `dev` branch for daily development; `main` reserved for tagged releases. CI now triggers on `main` + `dev` pushes.

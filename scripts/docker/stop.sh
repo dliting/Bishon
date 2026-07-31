@@ -36,8 +36,8 @@ done
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
 
 export BISHON_LOG_TAG=stop
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 log() { bishon_log "$@"; }
 
 if docker ps -a --format '{{.Names}}' | grep -qx bishon; then

@@ -40,8 +40,8 @@ done
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
 
 export BISHON_LOG_TAG=start
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
@@ -134,7 +134,7 @@ for i in $(seq 1 90); do
         http_code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8777/bishon/ || true)"
         if [ "$http_code" != "200" ]; then
             if [ ! -f "$dist_index" ]; then
-                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + publish.sh."
+                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + upgrade.sh."
             fi
             die "/bishon/ returned HTTP $http_code despite $dist_index existing. Check container logs: docker logs bishon"
         fi
@@ -151,6 +151,18 @@ for i in $(seq 1 90); do
                 log "UI asset $asset_path OK (200)"
             fi
         fi
+        log ""
+        log "✓ 服务已启动"
+        log "  Web:    http://localhost:8777/bishon/"
+        log "  API:    http://localhost:8777/api/health"
+        log ""
+        log "  日志:"
+        log "    容器:  docker logs -f bishon"
+        log "    应用:  tail -f $HOST_DIR/logs/debug_logs/debug.log"
+        log "    问答:  tail -f $HOST_DIR/logs/qa_logs/qa.log"
+        log ""
+        log "  停止: bash $HOST_DIR/scripts/docker/stop.sh --host-dir $HOST_DIR"
+        log "  升级: bash $HOST_DIR/scripts/docker/upgrade.sh --host-dir $HOST_DIR --release <new-tar>"
         exit 0
     fi
     sleep 2

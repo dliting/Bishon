@@ -66,13 +66,16 @@ while IFS= read -r f; do
         echo "FAIL: $f"
         fail=1
     fi
-done < <(find docker scripts/docker -name '*.sh' -type f 2>/dev/null | sort)
+done < <(find docker scripts/common scripts/docker scripts/bare-metal \
+         deploy.sh start-docker.sh stop-docker.sh \
+         start-bare-metal.sh stop-bare-metal.sh \
+         -name '*.sh' -type f 2>/dev/null | sort)
 echo "checked $sh_count files"
 
 # --- 2. release/MANIFEST validation ------------------------------------------
 echo
 echo "=== 2/3 release/MANIFEST validation ==="
-if ! bash scripts/docker/validate-manifest.sh --repo-root .; then
+if ! bash scripts/common/validate-manifest.sh --repo-root .; then
     fail=1
 fi
 

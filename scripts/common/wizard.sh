@@ -1,160 +1,11 @@
 #!/usr/bin/env bash
-# scripts/docker/deploy.sh
-#
-# L3 wizard: top-level deployment orchestrator. Asks the user (or accepts
-# CLI flags / saved config) which deployment mode to use, then dispatches
-# to the appropriate L2 module.
-#
-# Three modes:
-#   docker-online   Pull image from ghcr.io or Aliyun, run in Docker.
-#   docker-offline  Load image from local tar, run in Docker.
-#   bare-metal      No Docker; run uvicorn directly with the bishon conda env.
-#
-# Usage (interactive):
-#   bash deploy.sh
-#
-# Usage (non-interactive):
-#   bash deploy.sh --non-interactive \
-#       --mode docker-online --host-dir /var/lib/bishon \
-#       --release /path/to/release.tar.gz \
-#       --registry aliyun --models-source online
-#
-# Flags / config file:
-#   Every interactive question has a corresponding flag. Answers are also
-#   persisted to <host-dir>/deploy.conf after a successful run; subsequent
-#   invocations read it as defaults.
-#
-# Detection:
-#   - Running on native Windows (MSYS / Cygwin / cmd) → warn, suggest WSL2.
-#     --native-windows forces continuation.
-#   - Running in WSL or Linux → proceed normally.
-
-set -euo pipefail
-
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Wizard state (filled by args or prompts)
-NON_INTERACTIVE=false
-DRY_RUN=false
-MODE=""                # docker-online | docker-offline | bare-metal
-HOST_DIR=""
-RELEASE_TAR=""
-IMAGE_TAR=""
-IMAGE_SOURCE=""        # pull | load | existing
-REGISTRY="ghcr"
-TAG=""
-MODELS_SOURCE=""       # online | tarball | skip
-MODELS_TAR=""
-MODELS_DIR=""
-SOURCE_DIR=""
-CONDA_ENV=""
-INSTALL_DEPS=false
-NATIVE_WINDOWS=false
-LOAD_CONFIG=""
-SAVE_CONFIG=true
-BUNDLE_DIR=""           # auto-detected: dir containing release/image/models tarballs
-
-# --- arg parsing ------------------------------------------------------------
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --non-interactive) NON_INTERACTIVE=true; shift ;;
-        --dry-run)         DRY_RUN=true; shift ;;
-        --mode)            MODE="$2"; shift 2 ;;
-        --host-dir)        HOST_DIR="$2"; shift 2 ;;
-        --release)         RELEASE_TAR="$2"; shift 2 ;;
-        --image)           IMAGE_TAR="$2"; IMAGE_SOURCE="load"; shift 2 ;;
-        --pull)            IMAGE_SOURCE="pull"; shift ;;
-        --image-source)    IMAGE_SOURCE="$2"; shift 2 ;;
-        --registry)        REGISTRY="$2"; shift 2 ;;
-        --tag)             TAG="$2"; shift 2 ;;
-        --models-source)   MODELS_SOURCE="$2"; shift 2 ;;
-        --models)          MODELS_TAR="$2"; MODELS_SOURCE="tarball"; shift 2 ;;
-        --models-dir)      MODELS_DIR="$2"; MODELS_SOURCE="directory"; shift 2 ;;
-        --source-dir)      SOURCE_DIR="$2"; shift 2 ;;
-        --conda-env)       CONDA_ENV="$2"; shift 2 ;;
-        --install-deps)    INSTALL_DEPS=true; shift ;;
-        --native-windows)  NATIVE_WINDOWS=true; shift ;;
-        --load-config)     LOAD_CONFIG="$2"; shift 2 ;;
-        --no-save-config)  SAVE_CONFIG=false; shift ;;
-        --bundle-dir)      BUNDLE_DIR="$2"; shift 2 ;;
-        --help|-h)
-            cat <<'EOF'
-deploy.sh — Interactive deployment wizard for Bishon V2.
-
-Three modes:
-  docker-online   Pull image from ghcr.io / Aliyun, run in Docker. (Recommended.)
-  docker-offline  Load image from local docker save tar, run in Docker.
-  bare-metal      Run uvicorn directly with the bishon conda env. (No Docker.)
-
-USAGE
-  bash deploy.sh                              # interactive
-  bash deploy.sh --non-interactive [flags...] # CI / batch deploy
-
-FLAGS (every interactive question has a corresponding flag)
-  --mode <m>             Deployment mode (docker-online|docker-offline|bare-metal).
-  --host-dir <dir>       Where state lives (Docker modes only).
-                         MUST be ext4 (SQLite WAL fails on 9p/drvfs).
-  --release <tar.gz>     Main release tarball from make-release.sh.
-                         Always required for Docker modes (carries env + source).
-  --image <tar>          Local image tarball (docker-offline mode).
-  --pull                 Pull image from registry at install time (docker-online).
-  --image-source <src>   load | pull | existing (advanced; usually use --image/--pull).
-  --registry <r>         ghcr (default) | aliyun | aliyun-vpc | <full-url>.
-                         Used with --pull.
-  --tag <ver>            Image tag. Default: read from VERSION file.
-  --models-source <s>    online (hf-mirror.com + paddleocr auto) | tarball | skip.
-  --models <tar.gz>      Local models tarball (when --models-source tarball).
-  --models-dir <dir>     Path to existing models/ dir (when --models-source directory).
-  --source-dir <path>    Bishon V2 repo root (bare-metal mode).
-  --conda-env <path>     Path to bishon conda env (bare-metal; auto-detected if omitted).
-  --install-deps         Re-run pip install -r requirements.txt (bare-metal).
-  --bundle-dir <dir>     Dir containing release/image/models tarballs. Auto-detected
-                         in $PWD or script dir for offline mode; saves typing paths.
-  --load-config <path>   Read defaults from a saved config file.
-  --no-save-config       Skip writing <host-dir>/deploy.conf.
-  --native-windows       Bypass native-Windows warning (unsupported, use WSL2).
-  --non-interactive      Disable prompts; every question becomes a flag.
-  --dry-run              Walk through everything, print plan, no side effects.
-
-CONFIG PERSISTENCE
-  After a successful (non-dry-run) run, choices are saved to
-  <host-dir>/deploy.conf. Next run reads it as defaults. Override with flags
-  or --load-config.
-
-PLATFORM DETECTION
-  Native Windows (MSYS/Cygwin/cmd) is refused unless --native-windows.
-  WSL/Linux proceed normally. Run inside `wsl -d Ubuntu-22.04` for Windows.
-
-EXAMPLES
-  Interactive wizard:
-    bash deploy.sh
-
-  Non-interactive Docker pull from Aliyun, models online:
-    bash deploy.sh --non-interactive \
-        --mode docker-online --host-dir /var/lib/bishon \
-        --release bishon-release-2.2.0.tar.gz \
-        --registry aliyun --models-source online
-
-  Non-interactive bare-metal, no models, no pip reinstall:
-    bash deploy.sh --non-interactive \
-        --mode bare-metal --source-dir /opt/Bishon/V2/dev \
-        --models-source skip
-
-  Dry-run (no side effects, prints plan):
-    bash deploy.sh --non-interactive --dry-run \
-        --mode docker-offline --host-dir /var/lib/bishon \
-        --release r.tar.gz --image i.tar
-EOF
-            exit 0 ;;
-        *) echo "unknown arg: $1" >&2; exit 1 ;;
-    esac
-done
-
-export BISHON_LOG_TAG=deploy
-source "$SCRIPT_DIR/lib/common.sh"
-log() { bishon_log "$@"; }
-die() { bishon_die "$@"; }
+# wizard.sh — 4 步交互向导。被 deploy.sh source 执行。
+# 不直接执行——继承 deploy.sh 的 set -euo pipefail 和变量。
+# 
+# 设置以下变量后返回到 deploy.sh：
+#   MODE, HOST_DIR, RELEASE_TAR, IMAGE_TAR, IMAGE_SOURCE,
+#   REGISTRY, TAG, MODELS_SOURCE, MODELS_TAR, MODELS_DIR,
+#   SOURCE_DIR, CONDA_ENV, INSTALL_DEPS, BUNDLE_DIR
 
 # --- helpers ----------------------------------------------------------------
 ask() {
@@ -262,51 +113,6 @@ ask_choice() {
     echo "$opts" | tr ' ' '\n' | sed -n "${reply}p"
 }
 
-# --- platform detection -----------------------------------------------------
-detect_platform() {
-    case "$(uname -s)" in
-        Linux*)
-            if grep -qi microsoft /proc/version 2>/dev/null; then
-                echo "wsl"
-            else
-                echo "linux"
-            fi
-            ;;
-        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
-        Darwin) echo "macos" ;;
-        *) echo "unknown" ;;
-    esac
-}
-
-PLATFORM="$(detect_platform)"
-log "platform: $PLATFORM"
-
-if [ "$PLATFORM" = "windows" ] && ! $NATIVE_WINDOWS; then
-    cat >&2 <<EOF
-[deploy] Native Windows detected. Bishon V2 targets Linux/WSL2 — native
-         Windows is unsupported (paddlepaddle-gpu wheels incomplete, 9p
-         SQLite WAL issues via Docker Desktop bind mounts).
-
-         Open a WSL2 Ubuntu 22.04 terminal and run this script there:
-           wsl -d Ubuntu-22.04
-           cd /mnt/i/Bishon/V2/dev
-           bash scripts/docker/deploy.sh
-
-         To force native-Windows continuation anyway: --native-windows
-EOF
-    exit 1
-fi
-
-# --- load saved config ------------------------------------------------------
-if [ -z "$LOAD_CONFIG" ] && [ -n "$HOST_DIR" ] && [ -f "$HOST_DIR/deploy.conf" ]; then
-    LOAD_CONFIG="$HOST_DIR/deploy.conf"
-fi
-if [ -n "$LOAD_CONFIG" ] && [ -f "$LOAD_CONFIG" ]; then
-    log "loading saved config from $LOAD_CONFIG"
-    # shellcheck disable=SC1090
-    source "$LOAD_CONFIG"
-fi
-
 # --- environment detection (informs mode defaults) -------------------------
 # --- bundle detection -----------------------------------------------------
 # Look for a deploy bundle dir: check $PWD (operator cd'd into it), then the
@@ -375,32 +181,8 @@ fi
 # Default host-dir: ./bishon-data (next to wherever the operator is running).
 [ -z "$HOST_DIR" ] && HOST_DIR="./bishon-data"
 
-# --- preflight (informational; shows what's ready) --------------------------
-VERSION_FOR_PREFLIGHT="${TAG:-}"
-if [ -z "$VERSION_FOR_PREFLIGHT" ]; then
-    # In bundle context, VERSION lives at bundle root (copied by make-release.sh).
-    # In repo context, REPO_ROOT/VERSION is the source of truth.
-    if [ -n "$BUNDLE_DIR" ] && [ -f "$BUNDLE_DIR/VERSION" ]; then
-        VERSION_FOR_PREFLIGHT="$(tr -d '[:space:]' < "$BUNDLE_DIR/VERSION")"
-    elif [ -f "$REPO_ROOT/VERSION" ]; then
-        VERSION_FOR_PREFLIGHT="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
-    fi
-fi
-MODE_FOR_PREFLIGHT="${DEFAULT_MODE}"
-log "=== preflight (informational; failures don't block) ==="
-PREFLIGHT_ARGS=(--mode "$MODE_FOR_PREFLIGHT")
-[ -n "$VERSION_FOR_PREFLIGHT" ] && PREFLIGHT_ARGS+=(--version "$VERSION_FOR_PREFLIGHT")
-# When running from a bundle, pass the source dir so preflight can find
-# bishon_kernel/bishon_server/dist/. Models are at the bundle root level
-# (not inside bishon/), so pass a separate --models-dir.
-if [ -n "${BUNDLE_SOURCE_DIR:-}" ]; then
-    export CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
-    export ENV_SRC="${CONDA_ROOT}/envs/bishon"
-    PREFLIGHT_ARGS+=(--source-dir "$BUNDLE_SOURCE_DIR")
-    PREFLIGHT_ARGS+=(--models-dir "$BUNDLE_DIR/models")
-fi
-bash "$SCRIPT_DIR/preflight.sh" "${PREFLIGHT_ARGS[@]}" 2>&1 | sed 's/^/  /' || true
 
+# ===== Step 1-4: Gather inputs =====
 # --- gather missing inputs --------------------------------------------------
 if [ -z "$MODE" ]; then
     log ""
@@ -463,7 +245,7 @@ case "$MODE" in
                 fi
             fi
             [ -n "$IMAGE_TAR" ] || IMAGE_TAR=$(ask_path \
-                "image tarball path? (from build.sh + docker save)" \
+                "image tarball path? (from build-image.sh + docker save)" \
                 "$IMAGE_TAR")
         fi
 
@@ -549,73 +331,3 @@ if ! $NON_INTERACTIVE; then
     confirm=$(ask "proceed?" "y")
     [ "$confirm" = "y" ] || { log "aborted"; exit 1; }
 fi
-
-# --- save config (skipped in dry-run mode; I1 fix) -------------------------
-# NOTE: write must happen AFTER the dry-run check, otherwise --dry-run leaves
-# a deploy.conf on disk — violating the dry-run contract that operators rely
-# on for safe rehearsal deploys.
-if ! $DRY_RUN && $SAVE_CONFIG && [ -n "$HOST_DIR" ]; then
-    CONF="$HOST_DIR/deploy.conf"
-    cat > "$CONF" <<EOF
-# Auto-saved by deploy.sh $(date -Iseconds 2>/dev/null || echo "")
-MODE="$MODE"
-HOST_DIR="$HOST_DIR"
-RELEASE_TAR="$RELEASE_TAR"
-IMAGE_TAR="$IMAGE_TAR"
-IMAGE_SOURCE="$IMAGE_SOURCE"
-REGISTRY="$REGISTRY"
-TAG="$TAG"
-MODELS_SOURCE="$MODELS_SOURCE"
-MODELS_TAR="$MODELS_TAR"
-MODELS_DIR="$MODELS_DIR"
-SOURCE_DIR="$SOURCE_DIR"
-CONDA_ENV="$CONDA_ENV"
-INSTALL_DEPS="$INSTALL_DEPS"
-EOF
-    log "config saved to $CONF"
-fi
-
-# --- dispatch ---------------------------------------------------------------
-if $DRY_RUN; then
-    log "(dry-run: not executing)"
-    exit 0
-fi
-
-# Handle models directory: symlink it in before starting deployment.
-if [ "$MODELS_SOURCE" = "directory" ] && [ -d "$MODELS_DIR" ]; then
-    case "$MODE" in
-        docker-online|docker-offline)
-            rm -f "$HOST_DIR/models" 2>/dev/null || true
-            ln -sfn "$MODELS_DIR" "$HOST_DIR/models"
-            log "linked $HOST_DIR/models → $MODELS_DIR"
-            ;;
-        bare-metal)
-            rm -f "$SOURCE_DIR/models" 2>/dev/null || true
-            ln -sfn "$MODELS_DIR" "$SOURCE_DIR/models"
-            log "linked $SOURCE_DIR/models → $MODELS_DIR"
-            ;;
-    esac
-fi
-
-case "$MODE" in
-    docker-online|docker-offline)
-        DEPLOY_ARGS=(--host-dir "$HOST_DIR" --release "$RELEASE_TAR")
-        case "$IMAGE_SOURCE" in
-            pull)    DEPLOY_ARGS+=(--pull --registry "$REGISTRY") ;;
-            load)    DEPLOY_ARGS+=(--image "$IMAGE_TAR") ;;
-            existing) DEPLOY_ARGS+=(--image-source existing) ;;
-        esac
-        [ -n "$TAG" ] && DEPLOY_ARGS+=(--tag "$TAG")
-        if [ "$MODELS_SOURCE" = "tarball" ]; then DEPLOY_ARGS+=(--models "$MODELS_TAR"); fi
-        if [ "$MODELS_SOURCE" = "directory" ]; then DEPLOY_ARGS+=(--models-dir "$MODELS_DIR"); fi
-        bash "$SCRIPT_DIR/deploy-docker.sh" "${DEPLOY_ARGS[@]}"
-        ;;
-    bare-metal)
-        BM_ARGS=(--source-dir "$SOURCE_DIR" --conda-env "$CONDA_ENV"
-                 --models-source "$MODELS_SOURCE")
-        if $INSTALL_DEPS; then BM_ARGS+=(--install-deps); fi
-        if [ "$MODELS_SOURCE" = "tarball" ]; then BM_ARGS+=(--models "$MODELS_TAR"); fi
-        if [ "$MODELS_SOURCE" = "directory" ]; then BM_ARGS+=(--models-dir "$MODELS_DIR"); fi
-        bash "$SCRIPT_DIR/deploy-bare-metal.sh" "${BM_ARGS[@]}"
-        ;;
-esac

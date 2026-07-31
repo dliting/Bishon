@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/download-models.sh
+# scripts/common/download-models.sh
 #
 # Download the model weights required by Bishon V2.
 #
@@ -16,12 +16,12 @@
 #                     paddleocr package on first use, requires bishon env).
 #
 # Usage:
-#   bash scripts/download-models.sh                          # default: ./models
-#   bash scripts/download-models.sh --target /opt/Bishon/V2/dev/models
-#   bash scripts/download-models.sh --dry-run                # print URLs only
-#   bash scripts/download-models.sh --offline <tar.gz>       # extract from tarball
-#   bash scripts/download-models.sh --skip-rerank            # only PaddleOCR
-#   bash scripts/download-models.sh --skip-paddleocr         # only Reranker
+#   bash scripts/common/download-models.sh                          # default: ./models
+#   bash scripts/common/download-models.sh --target /opt/Bishon/V2/dev/models
+#   bash scripts/common/download-models.sh --dry-run                # print URLs only
+#   bash scripts/common/download-models.sh --offline <tar.gz>       # extract from tarball
+#   bash scripts/common/download-models.sh --skip-rerank            # only PaddleOCR
+#   bash scripts/common/download-models.sh --skip-paddleocr         # only Reranker
 #
 # Exit codes:
 #   0  success (or --dry-run completed)

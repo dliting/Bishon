@@ -2,7 +2,7 @@
 # scripts/docker/publish-image.sh
 #
 # Push the locally-built bishon-cuda:<ver> image to one or both registries.
-# Manual trigger (no CI auto-push); run after build.sh whenever the
+# Manual trigger (no CI auto-push); run after build-image.sh whenever the
 # image content changes (Dockerfile, entrypoint.sh, or apt/conda versions).
 #
 # Default: pushes to both ghcr.io and Aliyun.
@@ -54,8 +54,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 export BISHON_LOG_TAG=publish-image
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 
@@ -70,7 +70,7 @@ fi
 LOCAL_IMAGE="bishon-cuda:$TAG"
 log "looking for local image: $LOCAL_IMAGE"
 docker image inspect "$LOCAL_IMAGE" >/dev/null 2>&1 || \
-    die "$LOCAL_IMAGE not built. Run: build.sh"
+    die "$LOCAL_IMAGE not built. Run: build-image.sh"
 
 # Choose aliyun endpoint
 if $ALIYUN_USE_VPC; then

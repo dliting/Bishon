@@ -39,8 +39,8 @@ done
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 export BISHON_LOG_TAG=uninstall
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# publish.sh — upgrade code/models/(optional) env on an installed host.
+# upgrade.sh — upgrade code/models/(optional) env on an installed host.
 #
 # Usage:
-#   bash publish.sh --host-dir <dir> --release <new-release.tar.gz>
+#   bash upgrade.sh --host-dir <dir> --release <new-release.tar.gz>
 #
 # Atomically replaces (with timestamped backup, then deletes the backup):
 #   - bishon/           (source code)
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
         --release)  RELEASE_TAR="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
-publish.sh — Upgrade code/models on an installed host (in place).
+upgrade.sh — Upgrade code/models on an installed host (in place).
 
 Atomically replaces bishon/ (source) and models/ in <host-dir> from a new
 release tarball, then optionally python-env/ if the new tarball carries one.
@@ -55,8 +55,8 @@ EOF
 done
 
 export BISHON_LOG_TAG=publish
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
@@ -119,6 +119,6 @@ Preserved (NEVER touched):
    .env, BISHON_DB/, logs/, .image-tag, .accelerator
 
 Next step — restart the container:
-   bash $HOST_DIR/scripts/stop.sh  --host-dir $HOST_DIR
-   bash $HOST_DIR/scripts/start.sh --host-dir $HOST_DIR
+   bash $HOST_DIR/scripts/docker/stop.sh  --host-dir $HOST_DIR
+   bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
 EOF

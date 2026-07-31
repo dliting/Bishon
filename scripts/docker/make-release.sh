@@ -9,7 +9,7 @@
 #   bash scripts/docker/make-release.sh --version 2.1.0 [--conda-root /opt/miniconda3]
 #
 # Run inside WSL (Ubuntu 22.04) with the bishon conda env already created and
-# all Python deps installed. The image must already exist (run build.sh
+# all Python deps installed. The image must already exist (run build-image.sh
 # first) — this script refuses to ship a release without its matching image.
 #
 # Hard constraint: WSL Ubuntu version MUST equal the image base (22.04), or
@@ -74,7 +74,7 @@ EOF
     esac
 done
 
-# Default VERSION from file if not passed on CLI (matches build.sh).
+# Default VERSION from file if not passed on CLI (matches build-image.sh).
 if [ -z "$VERSION" ]; then
     VERSION_FILE="$REPO_ROOT/VERSION"
     [ -f "$VERSION_FILE" ] || { echo "FATAL: $VERSION_FILE missing and --version not given" >&2; exit 1; }
@@ -92,8 +92,8 @@ IMAGE_TAR="$DIST/bishon-cuda-image-$VERSION.tar"
 IMAGE_TAG="bishon-cuda:$VERSION"
 
 export BISHON_LOG_TAG=release
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
@@ -103,7 +103,7 @@ PREFLIGHT_ARGS=(--version "$VERSION")
 if $SKIP_ENV && $SKIP_MODELS && $SKIP_IMAGE; then
     PREFLIGHT_ARGS+=(--src-only)
 fi
-bash "$(dirname "$0")/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
+bash "$(dirname "$0")/../common/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
     die "preflight failed. Fix the issues above before running make-release.sh."
 
 # --- 1. Stage directory ------------------------------------------------------
@@ -238,25 +238,24 @@ else
 fi
 
 # --- 5. Deploy bundle layout (self-contained, drop-in deployable) ------------
-# The operator copies the whole dist/release-<ver>/ directory and runs
-#   bash deploy.sh
-# from inside it. No need to remember script names, paths, or flags.
+# Bundle root layout:
+#   deploy.sh, start-docker.sh, ..., run_all_tests.sh   ← operator entry
+#   scripts/{common,docker,bare-metal}/                 ← invoked by deploy.sh
+# These are NOT under bishon/ — bishon/ is the runtime source (kernel, frontend,
+# tests, docs, etc.) only.
 mkdir -p "$DIST/scripts"
-cp -a "$REPO_ROOT/scripts/docker/." "$DIST/scripts/"
-rm -f "$DIST/scripts/deploy-entry-wrapper.sh.in"     # template, not needed at runtime
+cp -a "$REPO_ROOT/scripts/common" "$DIST/scripts/"
+cp -a "$REPO_ROOT/scripts/docker" "$DIST/scripts/"
+cp -a "$REPO_ROOT/scripts/bare-metal" "$DIST/scripts/"
+cp "$REPO_ROOT/scripts/run_all_tests.sh" "$DIST/scripts/"
 
-# Render the one-line entry point at bundle root.
-cat > "$DIST/deploy.sh" <<'DEPLOY_SH'
-#!/usr/bin/env bash
-# deploy.sh — Bishon V2 deployment entry point.
-# Run from within the deploy bundle directory:
-#   bash deploy.sh
-# The wizard auto-detects bundle location and finds release/image/models
-# tarballs in the same directory.
-set -euo pipefail
-cd "$(dirname "$0")"
-exec bash scripts/deploy.sh "$@"
-DEPLOY_SH
+# Root-level operator entry points
+cp "$REPO_ROOT/deploy.sh"               "$DIST/"
+cp "$REPO_ROOT/start-docker.sh"         "$DIST/"
+cp "$REPO_ROOT/stop-docker.sh"          "$DIST/"
+cp "$REPO_ROOT/start-bare-metal.sh"     "$DIST/"
+cp "$REPO_ROOT/stop-bare-metal.sh"      "$DIST/"
+cp "$REPO_ROOT/run_all_tests.sh"        "$DIST/"
 
 cp "$REPO_ROOT/.env.example" "$DIST/"
 cp "$REPO_ROOT/VERSION" "$DIST/"

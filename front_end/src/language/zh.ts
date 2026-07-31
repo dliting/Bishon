@@ -46,6 +46,7 @@ export default {
     deleteTitle: '确认删除文档吗？',
     dataSource: '数据来源',
     correlation: '相关性:',
+    chunkCount: '个段落',
     copySuccess: '拷贝成功',
     copyFailed: '拷贝失败',
     copied: '拷贝过',

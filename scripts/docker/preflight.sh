@@ -85,6 +85,14 @@ fi
 DIST_INDEX="$CHECK_ROOT/bishon_kernel/bishon_server/dist/bishon/index.html"
 if [ -f "$DIST_INDEX" ]; then
     p "frontend dist present"
+    # Verify asset paths have the correct /bishon/ prefix (matching FastAPI mount).
+    # A build without .env.production (VITE_APP_WEB_PREFIX=/bishon) produces
+    # paths like /assets/... which 404 when served under /bishon/.
+    if grep -qP 'src="/bishon/assets/|href="/bishon/assets/' "$DIST_INDEX" 2>/dev/null; then
+        p "frontend dist base path correct (/bishon/ prefix)"
+    else
+        f "frontend dist has wrong base path: assets do not start with /bishon/assets/. Rebuild with VITE_APP_WEB_PREFIX=/bishon in front_end/.env.production."
+    fi
 else
     f "$DIST_INDEX missing. Rebuild frontend."
 fi

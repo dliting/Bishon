@@ -25,16 +25,20 @@ OUTPUT_DIR=""           # default: $REPO_ROOT/dist
 SKIP_ENV=false
 SKIP_MODELS=false
 SKIP_IMAGE=false
+SKIP_FRONTEND=false
+FORCE_FRONTEND=false
 FORCE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version)     VERSION="$2";    shift 2 ;;
-        --conda-root)  CONDA_ROOT="$2"; shift 2 ;;
-        --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
-        --force)       FORCE=true;      shift ;;
-        --skip-env)    SKIP_ENV=true;   shift ;;
-        --skip-models) SKIP_MODELS=true; shift ;;
-        --skip-image)  SKIP_IMAGE=true; shift ;;
+        --version)        VERSION="$2";    shift 2 ;;
+        --conda-root)     CONDA_ROOT="$2"; shift 2 ;;
+        --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
+        --force)          FORCE=true;      shift ;;
+        --skip-env)       SKIP_ENV=true;       shift ;;
+        --skip-models)    SKIP_MODELS=true;    shift ;;
+        --skip-image)     SKIP_IMAGE=true;     shift ;;
+        --skip-frontend)  SKIP_FRONTEND=true;  shift ;;
+        --force-frontend) FORCE_FRONTEND=true; shift ;;
         -h|--help)
             cat <<EOF
 Usage: $0 [--version <ver>] [--conda-root /opt/miniconda3] [flags]
@@ -49,6 +53,8 @@ COMPONENT SELECTION (all included by default)
   --skip-env           Skip the python-env (conda env copy ~7 GB).
   --skip-models        Skip models (Qwen3-Reranker + PaddleOCR ~2.5 GB).
   --skip-image         Skip the docker image tar (~3 GB).
+  --skip-frontend      Skip the frontend build (use if dist is already built).
+  --force-frontend     Rebuild frontend even if dist already exists.
 
 EXISTING RELEASE DIR
   --force              Overwrite existing files in release-<ver>/ dir.
@@ -137,6 +143,7 @@ RSYNC_EXCLUDES=(
     --exclude '.ruff_cache'
     --exclude 'node_modules'
     --exclude 'front_end/dist'
+    --exclude 'bishon_kernel/bishon_server/dist'
     --exclude '.git'
 )
 
@@ -151,6 +158,69 @@ while IFS= read -r path; do
     shipped=$((shipped + 1))
 done < <(bishon_parse_manifest "$MANIFEST")
 [ "$shipped" -gt 0 ] || die "MANIFEST produced zero staged paths. Is the file empty?"
+
+# --- 3b. Frontend dist (ensures correct base path in built assets) ------------
+# Source staging (step 3) excludes bishon_kernel/bishon_server/dist to avoid
+# shipping stale builds. This step fills it in — either by building fresh or
+# by copying the pre-built dist from the repo workspace.
+STAGED_DIST_DIR="$DIST/bishon/bishon_kernel/bishon_server/dist"
+STAGED_FRONTEND="$DIST/bishon/front_end"
+REPO_DIST="$REPO_ROOT/bishon_kernel/bishon_server/dist/bishon/index.html"
+
+# Helper: build frontend from staged source and copy to bishon_server/dist/.
+build_frontend() {
+    command -v npm >/dev/null || die "npm not found. Install Node.js or use --skip-frontend (dist must be pre-built)."
+    [ -d "$STAGED_FRONTEND" ] || die "staged front_end/ not found — cannot build frontend."
+    log "building frontend (npm ci && npm run build) ..."
+    # npm ci installs from package-lock.json for reproducibility.
+    # --legacy-peer-deps is needed due to known peer dependency conflicts
+    # (pinia-plugin-persistedstate vs pinia vs vue version ranges).
+    (cd "$STAGED_FRONTEND" && npm ci --legacy-peer-deps && npm run build) || \
+        die "frontend build failed. Fix errors above or use --skip-frontend."
+    # Vite outputs to front_end/dist/bishon/ (per vite.config.ts outDir).
+    # Copy the contents of front_end/dist/ to bishon_server/dist/ where
+    # FastAPI serves it. The dist/ dir contains the bishon/ subdirectory.
+    mkdir -p "$STAGED_DIST_DIR"
+    cp -a "$STAGED_FRONTEND/dist/." "$STAGED_DIST_DIR/"
+    # Verify the build produced correct paths.
+    if ! grep -qP 'src="/bishon/assets/|href="/bishon/assets/' "$STAGED_DIST_DIR/bishon/index.html" 2>/dev/null; then
+        die "frontend build produced wrong base path. Check front_end/.env.production has VITE_APP_WEB_PREFIX=/bishon"
+    fi
+    log "frontend built and copied to bishon_server/dist/"
+}
+
+# Helper: validate base path in an index.html and copy to staged dist dir.
+copy_valid_dist() {
+    local src_index="$1" src_dir="$2" label="$3"
+    if ! grep -qP 'src="/bishon/assets/|href="/bishon/assets/' "$src_index" 2>/dev/null; then
+        return 1  # wrong base path
+    fi
+    mkdir -p "$STAGED_DIST_DIR"
+    cp -a "$src_dir/." "$STAGED_DIST_DIR/"
+    log "copied valid frontend dist $label (use --force-frontend to rebuild)"
+    return 0
+}
+
+if $SKIP_FRONTEND; then
+    # --skip-frontend: copy the pre-built dist from the repo workspace.
+    if [ ! -f "$REPO_DIST" ]; then
+        die "frontend dist missing at $REPO_DIST and --skip-frontend given. Build the frontend first (cd front_end && npm run build) or remove --skip-frontend."
+    fi
+    if ! copy_valid_dist "$REPO_DIST" "$REPO_ROOT/bishon_kernel/bishon_server/dist" "from repo"; then
+        die "repo frontend dist has wrong base path (assets do not start with /bishon/assets/). Rebuild with VITE_APP_WEB_PREFIX=/bishon or remove --skip-frontend."
+    fi
+elif $FORCE_FRONTEND; then
+    build_frontend
+elif [ -f "$REPO_DIST" ]; then
+    # Pre-built dist exists in repo workspace — try to copy; rebuild if wrong path.
+    if ! copy_valid_dist "$REPO_DIST" "$REPO_ROOT/bishon_kernel/bishon_server/dist" "from repo"; then
+        log "repo frontend dist has wrong base path — rebuilding instead"
+        build_frontend
+    fi
+else
+    # No pre-built dist — must build.
+    build_frontend
+fi
 
 # --- 4. Models — separate tarball (not in main release) ----------------------
 # Models (~2.5 GB) change infrequently; shipping them in the main tarball

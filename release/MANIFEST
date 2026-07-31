@@ -3,8 +3,9 @@
 # Each non-comment, non-blank line is a path (relative to repo root) that
 # ships in the release tarball under `bishon/`. Directories are included
 # recursively. Common build artifacts (__pycache__, node_modules, .git,
-# .pytest_cache, front_end/dist, etc.) are filtered by rsync excludes in
-# make-release.sh regardless of manifest entries — keep those out here.
+# .pytest_cache, front_end/dist, bishon_kernel/bishon_server/dist, etc.)
+# are filtered by rsync excludes in make-release.sh regardless of manifest
+# entries — keep those out here.
 #
 # To add a ship path: append a line. To remove: delete the line.
 # Keep this file readable; group related paths under section comments.

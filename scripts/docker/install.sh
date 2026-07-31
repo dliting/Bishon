@@ -180,6 +180,9 @@ tar -xzf "$RELEASE_TAR" -C "$TMP"
     die "release tarball missing bishon/bishon_kernel"
 [ -f "$TMP/bishon/bishon_kernel/bishon_server/dist/bishon/index.html" ] || \
     die "release tarball missing bishon_kernel/bishon_server/dist/bishon/index.html"
+if ! grep -qP 'src="/bishon/assets/|href="/bishon/assets/' "$TMP/bishon/bishon_kernel/bishon_server/dist/bishon/index.html" 2>/dev/null; then
+    die "release tarball frontend dist has wrong base path (assets do not start with /bishon/assets/). Rebuild with VITE_APP_WEB_PREFIX=/bishon."
+fi
 
 rm -rf "$HOST_DIR/python-env" "$HOST_DIR/bishon"
 mv "$TMP/python-env" "$HOST_DIR/python-env"

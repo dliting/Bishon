@@ -53,7 +53,7 @@ docker_sh_files() {
 
 @test "lib/common.sh is sourceable with no side effects" {
     # Sourcing should produce no output, exit 0.
-    run bash -c 'source "$0" && true' "$REPO_ROOT/scripts/docker/lib/common.sh"
+    run bash -c 'source "$0" && true' "$REPO_ROOT/scripts/common/utils.sh"
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 }
@@ -72,21 +72,21 @@ bishon_kernel
 front_end
 start.sh
 EOF
-    result="$(bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_parse_manifest '$tmp'")"
+    result="$(bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_parse_manifest '$tmp'")"
     expected="$(printf 'bishon_kernel\nfront_end\nstart.sh')"
     [ "$result" = "$expected" ]
     rm -f "$tmp"
 }
 
 @test "bishon_parse_manifest returns non-zero when manifest missing" {
-    run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_parse_manifest '/nonexistent/MANIFEST'"
+    run bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_parse_manifest '/nonexistent/MANIFEST'"
     [ "$status" -ne 0 ]
 }
 
 @test "bishon_parse_manifest handles trailing-whitespace lines" {
     tmp="$(mktemp)"
     printf '  bishon_kernel  \n\tstart.sh\n' >"$tmp"
-    result="$(bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_parse_manifest '$tmp'")"
+    result="$(bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_parse_manifest '$tmp'")"
     [ "$result" = "$(printf 'bishon_kernel\nstart.sh')" ]
     rm -f "$tmp"
 }
@@ -96,24 +96,24 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "bishon_validate_host_dir_fs rejects /mnt/* (WSL drvfs proxy)" {
-    run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_validate_host_dir_fs /mnt/c/Users/foo"
+    run bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_validate_host_dir_fs /mnt/c/Users/foo"
     [ "$status" -ne 0 ]
     # Error message should mention WSL or drvfs so the operator knows why.
     [[ "$output" == *"9p"* || "$output" == *"drvfs"* || "$output" == *"WSL"* ]]
 }
 
 @test "bishon_validate_host_dir_fs rejects /media/* (Linux auto-mount)" {
-    run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_validate_host_dir_fs /media/sdcard/foo"
+    run bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_validate_host_dir_fs /media/sdcard/foo"
     [ "$status" -ne 0 ]
 }
 
 @test "bishon_validate_host_dir_fs rejects /run/media/* (systemd auto-mount)" {
-    run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_validate_host_dir_fs /run/media/user/disk"
+    run bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_validate_host_dir_fs /run/media/user/disk"
     [ "$status" -ne 0 ]
 }
 
 @test "bishon_validate_host_dir_fs rejects empty path" {
-    run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_validate_host_dir_fs ''"
+    run bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_validate_host_dir_fs ''"
     [ "$status" -ne 0 ]
 }
 
@@ -130,7 +130,7 @@ EOF
             rm -rf "$tmp"
             skip "\$HOME is on $fs_type, not a normal Linux fs" ;;
     esac
-    run bash -c "source '$REPO_ROOT/scripts/docker/lib/common.sh' && bishon_validate_host_dir_fs '$tmp'"
+    run bash -c "source '$REPO_ROOT/scripts/common/utils.sh' && bishon_validate_host_dir_fs '$tmp'"
     rm -rf "$tmp"
     [ "$status" -eq 0 ]
     # On success the function prints the fs_type so the caller can capture it
@@ -141,7 +141,7 @@ EOF
 @test "bishon_validate_host_dir_fs preserves caller BISHON_LOG_TAG in error" {
     # I3: error messages must inherit the caller's log tag (e.g. [install])
     # so operators grepping deploy logs can attribute failures correctly.
-    run bash -c "export BISHON_LOG_TAG=install; source '$REPO_ROOT/scripts/docker/lib/common.sh'; bishon_validate_host_dir_fs /mnt/c/foo"
+    run bash -c "export BISHON_LOG_TAG=install; source '$REPO_ROOT/scripts/common/utils.sh'; bishon_validate_host_dir_fs /mnt/c/foo"
     [ "$status" -ne 0 ]
     [[ "$output" == *"[install] FATAL"* ]]
 }
@@ -151,7 +151,7 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "validate-manifest.sh exits 0 on the real MANIFEST" {
-    run bash "$REPO_ROOT/scripts/docker/validate-manifest.sh" --repo-root "$REPO_ROOT"
+    run bash "$REPO_ROOT/scripts/common/validate-manifest.sh" --repo-root "$REPO_ROOT"
     [ "$status" -eq 0 ]
     [[ "$output" == *"0 missing"* ]]
 }
@@ -165,7 +165,7 @@ this_path_does_not_exist
 EOF
     # Also create the listed-good path so only the bad one fails.
     mkdir -p "$tmp_repo/bishon_kernel"
-    run bash "$REPO_ROOT/scripts/docker/validate-manifest.sh" --repo-root "$tmp_repo"
+    run bash "$REPO_ROOT/scripts/common/validate-manifest.sh" --repo-root "$tmp_repo"
     [ "$status" -eq 1 ]
     [[ "$output" == *"this_path_does_not_exist"* ]]
     rm -rf "$tmp_repo"
@@ -173,7 +173,7 @@ EOF
 
 @test "validate-manifest.sh exits 1 when MANIFEST missing" {
     tmp_repo="$(mktemp -d)"
-    run bash "$REPO_ROOT/scripts/docker/validate-manifest.sh" --repo-root "$tmp_repo"
+    run bash "$REPO_ROOT/scripts/common/validate-manifest.sh" --repo-root "$tmp_repo"
     [ "$status" -eq 1 ]
     [[ "$output" == *"release/MANIFEST"* ]]
     rm -rf "$tmp_repo"

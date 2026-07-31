@@ -60,4 +60,11 @@ if [ -n "$PID" ]; then
 fi
 
 echo "[INFO] Starting Bishon V2 on http://localhost:8777 ..."
+echo ""
+echo "  日志:"
+echo "    应用:  tail -f logs/debug_logs/debug.log"
+echo "    问答:  tail -f logs/qa_logs/qa.log"
+echo ""
+echo "  停止: Ctrl+C 或 kill \$(fuser 8777/tcp 2>/dev/null)"
+echo ""
 exec uvicorn bishon_kernel.bishon_server.app:app --host 0.0.0.0 --port 8777 --log-level info

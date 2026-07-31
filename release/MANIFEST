@@ -23,8 +23,10 @@ docker
 scripts
 
 # === Bare-metal entry wrappers (delegate to scripts/) ===
-start.sh
-stop.sh
+start-docker.sh
+stop-docker.sh
+start-bare-metal.sh
+stop-bare-metal.sh
 run_all_tests.sh
 
 # === Python project ===

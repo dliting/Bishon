@@ -125,6 +125,18 @@ for i in $(seq 1 90); do
             die "/bishon/ returned HTTP $http_code despite $dist_index existing. Check container logs: docker logs bishon"
         fi
         log "UI assets served at /bishon/ (200 OK)"
+        log ""
+        log "✓ 服务已启动"
+        log "  Web:    http://localhost:8777/bishon/"
+        log "  API:    http://localhost:8777/api/health"
+        log ""
+        log "  日志:"
+        log "    容器:  docker logs -f bishon"
+        log "    应用:  tail -f $HOST_DIR/logs/debug_logs/debug.log"
+        log "    问答:  tail -f $HOST_DIR/logs/qa_logs/qa.log"
+        log ""
+        log "  停止: bash $HOST_DIR/scripts/docker/stop.sh --host-dir $HOST_DIR"
+        log "  升级: bash $HOST_DIR/scripts/docker/upgrade.sh --host-dir $HOST_DIR --release <new-tar>"
         exit 0
     fi
     sleep 2

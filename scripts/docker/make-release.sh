@@ -168,25 +168,15 @@ else
 fi
 
 # --- 5. Deploy bundle layout (self-contained, drop-in deployable) ------------
-# The operator copies the whole dist/release-<ver>/ directory and runs
-#   bash deploy.sh
-# from inside it. No need to remember script names, paths, or flags.
 mkdir -p "$DIST/scripts"
-cp -a "$REPO_ROOT/scripts/docker/." "$DIST/scripts/"
-rm -f "$DIST/scripts/deploy-entry-wrapper.sh.in"     # template, not needed at runtime
+cp -a "$REPO_ROOT/scripts/common" "$DIST/scripts/"
+cp -a "$REPO_ROOT/scripts/docker" "$DIST/scripts/"
+cp -a "$REPO_ROOT/scripts/bare-metal" "$DIST/scripts/"
+cp "$REPO_ROOT/scripts/run_all_tests.sh" "$DIST/scripts/"
+rm -f "$DIST/scripts/docker/deploy-entry-wrapper.sh.in"
 
-# Render the one-line entry point at bundle root.
-cat > "$DIST/deploy.sh" <<'DEPLOY_SH'
-#!/usr/bin/env bash
-# deploy.sh — Bishon V2 deployment entry point.
-# Run from within the deploy bundle directory:
-#   bash deploy.sh
-# The wizard auto-detects bundle location and finds release/image/models
-# tarballs in the same directory.
-set -euo pipefail
-cd "$(dirname "$0")"
-exec bash scripts/deploy.sh "$@"
-DEPLOY_SH
+# Copy root deploy.sh as bundle entry point
+cp "$REPO_ROOT/deploy.sh" "$DIST/deploy.sh"
 
 cp "$REPO_ROOT/.env.example" "$DIST/"
 cp "$REPO_ROOT/VERSION" "$DIST/"

@@ -139,8 +139,15 @@ Bishon/V2/
 ├── logs/                   Logs
 ├── .env                    Configuration (gitignored; copy from .env.example)
 ├── requirements.txt        Python dependencies
-├── start.sh                Linux/WSL startup script (wrapper → scripts/start.sh)
-└── stop.sh                 Linux/WSL stop script (wrapper → scripts/stop.sh)
+├── deploy.sh                  部署入口（向导或 CLI）
+├── start-docker.sh            Docker 启动 wrapper
+├── stop-docker.sh             Docker 停止 wrapper
+├── start-bare-metal.sh        Bare-metal 启动 wrapper
+├── stop-bare-metal.sh         Bare-metal 停止 wrapper
+└── scripts/
+    ├── common/                共享工具（utils/wizard/download/preflight）
+    ├── docker/                Docker 脚本（install/start/stop/upgrade/...）
+    └── bare-metal/            Bare-metal 脚本（start/stop）
 ```
 
 ## Requirements
@@ -267,7 +274,7 @@ bash scripts/docker/install.sh \
     --release bishon-release-2.1.0.tar.gz \
     --image   bishon-cuda-image-2.1.0.tar
 # edit /var/lib/bishon/.env, then:
-bash /var/lib/bishon/scripts/start.sh --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
 Full instructions (env slimming, host-dir filesystem constraints, upgrade

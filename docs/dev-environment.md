@@ -218,8 +218,8 @@ ls -la dist/
 bash scripts/docker/make-release.sh --version <new>
 # 把新 tarball 拷到部署机，再
 bash <host-dir>/scripts/upgrade.sh --host-dir <host-dir> --release <new-tar>
-bash <host-dir>/scripts/stop.sh  --host-dir <host-dir>
-bash <host-dir>/scripts/start.sh --host-dir <host-dir>
+bash <host-dir>/scripts/docker/stop.sh  --host-dir <host-dir>
+bash <host-dir>/scripts/docker/start.sh --host-dir <host-dir>
 ```
 
 详见 [`docs/deployment.md` § 部署机：升级](./deployment.md#部署机升级publish)。

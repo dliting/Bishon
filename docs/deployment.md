@@ -89,6 +89,17 @@ ls dist/
 
 开发环境搭建（WSL ext4 + 模型符号链接等）见 [`dev-environment.md`](./dev-environment.md)。
 
+## 快速参考
+
+| 操作 | Docker 离线 | Docker 在线 | Bare-metal |
+|---|---|---|---|
+| **部署** | `deploy.sh` → docker-offline | `deploy.sh` → docker-online | `deploy.sh` → bare-metal |
+| **启动** | `<dir>/scripts/docker/start.sh --host-dir <dir>` | 同左 | `start-bare-metal.sh` |
+| **停止** | `<dir>/scripts/docker/stop.sh --host-dir <dir>` | 同左 | `stop-bare-metal.sh` |
+| **升级** | `<dir>/scripts/docker/upgrade.sh --host-dir <dir> --release <tar>` | 同左 | `git pull && pip install -r requirements.txt` |
+| **卸载** | `<dir>/scripts/docker/uninstall.sh --host-dir <dir>` | 同左 | `rm -rf <dir>` |
+| **日志** | `tail -f <dir>/logs/debug_logs/debug.log` | 同左 | `tail -f logs/debug_logs/debug.log` |
+
 ## 目录
 
 - [设计概览](#设计概览)
@@ -271,7 +282,7 @@ bash install.sh \
 ## 部署机：启动与健康检查
 
 ```bash
-bash /var/lib/bishon/scripts/start.sh --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
 `start.sh` 会：
@@ -295,8 +306,8 @@ bash /var/lib/bishon/scripts/upgrade.sh \
     --host-dir /var/lib/bishon \
     --release /path/to/bishon-release-2.1.1.tar.gz
 
-bash /var/lib/bishon/scripts/stop.sh  --host-dir /var/lib/bishon
-bash /var/lib/bishon/scripts/start.sh --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
 `upgrade.sh` 原子替换 `bishon/`、`models/`（若新包内有 `python-env/` 也替换），**永远不动**：
@@ -312,8 +323,8 @@ bash /var/lib/bishon/scripts/start.sh --host-dir /var/lib/bishon
 docker load -i /path/to/bishon-cuda-image-2.1.1.tar   # 加载新镜像
 echo "bishon-cuda:2.1.1" > /var/lib/bishon/.image-tag  # 切换 tag
 bash /var/lib/bishon/scripts/upgrade.sh --host-dir /var/lib/bishon --release bishon-release-2.1.1.tar.gz
-bash /var/lib/bishon/scripts/stop.sh  --host-dir /var/lib/bishon
-bash /var/lib/bishon/scripts/start.sh --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
 ## 部署机：卸载

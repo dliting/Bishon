@@ -47,6 +47,8 @@ export default {
     deleteTitle: 'Delete the document?',
     dataSource: 'data source',
     correlation: 'correlation:',
+    chunkCount: 'chunks',
+    chunkLabel: 'chunk',
     copySuccess: 'Copied Successfully',
     copyFailed: 'Copy Failed',
     copied: 'Copied',

@@ -4,10 +4,10 @@ import json
 import logging
 import os
 import re
+import time
 import traceback
 import urllib.parse
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import (
@@ -21,6 +21,7 @@ from fastapi.responses import (
 from bishon_kernel.connector.llm.adapters.base import SSE_DATA_PREFIX_LEN
 from bishon_kernel.core.local_doc_qa import LocalDocQA
 from bishon_kernel.core.local_file import LocalFile
+from bishon_kernel.monitoring.status_store import SERVICE_LLM, ServiceStatusStore
 from bishon_kernel.utils.custom_log import debug_logger, qa_logger
 from bishon_kernel.utils.general_utils import (
     current_timestamp,
@@ -30,8 +31,6 @@ from bishon_kernel.utils.general_utils import (
     validate_user_id,
 )
 
-# Thread pool for offloading synchronous LLM/FAISS operations
-_executor = ThreadPoolExecutor(max_workers=4)
 # Sentinel for safe generator exhaustion (avoids StopIteration in executor)
 _GEN_SENTINEL = object()
 
@@ -57,6 +56,15 @@ def _get_local_doc_qa(request: Request) -> LocalDocQA:
     return request.app.state.local_doc_qa
 
 
+def _get_monitor_store(request: Request) -> ServiceStatusStore:
+    return request.app.state.monitor_store
+
+
+def _get_executor(request: Request):
+    """Get the TrackedExecutor from app.state (set during FastAPI lifespan)."""
+    return request.app.state.executor
+
+
 async def _parse_user_request(request: Request) -> tuple[str, dict]:
     """Parse the request body, extract and validate user_id. Returns (user_id, body)."""
     body = await request.json()
@@ -69,8 +77,11 @@ async def _parse_user_request(request: Request) -> tuple[str, dict]:
 
 
 @router.get("/health")
-async def health_check():
-    return {"status": "ok", "version": "2.0.0"}
+async def health_check(request: Request):
+    """Enhanced health check — returns service statuses and queue depth."""
+    store = _get_monitor_store(request)
+    from bishon_kernel.bishon_server.app import APP_VERSION
+    return store.to_api_dict(version=APP_VERSION)
 
 
 @router.get("/local_doc_qa/download_file/{file_id}")
@@ -173,7 +184,8 @@ async def upload_weblink(request: Request):
         local_file = LocalFile(user_id, kb_id, url, file_id, url, local_doc_qa.embeddings, is_url=True)
         data = [{"file_id": file_id, "file_name": url, "status": "gray", "bytes": 0, "timestamp": timestamp}]
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(_executor, local_doc_qa.insert_files_to_milvus, user_id, kb_id, [local_file])
+        executor = _get_executor(request)
+        loop.run_in_executor(executor, local_doc_qa.insert_files_to_milvus, user_id, kb_id, [local_file])
         msg = "success，后台正在飞速上传文件，请耐心等待"
     return JSONResponse({"code": CODE_SUCCESS, "msg": msg, "data": data})
 
@@ -248,6 +260,7 @@ async def upload_files(
         })
 
     loop = asyncio.get_running_loop()
+    executor = _get_executor(request)
 
     def _safe_insert(user_id, kb_id, local_files):
         try:
@@ -261,7 +274,7 @@ async def upload_files(
                 except Exception:
                     debug_logger.error("Failed to update status for file %s", lf.file_id)
 
-    loop.run_in_executor(_executor, _safe_insert, user_id, kb_id, local_files)
+    loop.run_in_executor(executor, _safe_insert, user_id, kb_id, local_files)
     if exist_file_names:
         msg = f'warning，当前的mode是soft，无法上传同名文件{exist_file_names}，如果想强制上传同名文件，请设置mode：strong'
     else:
@@ -440,8 +453,11 @@ async def local_doc_chat(request: Request):
 
     if streaming:
         debug_logger.info("start generate answer (streaming)")
+        monitor_store = _get_monitor_store(request)
+        executor      = _get_executor(request)
 
         async def generate_answer():
+            t0 = time.time()
             try:
                 gen = local_doc_qa.get_knowledge_based_answer(
                     query=question, milvus_kb=faiss_kb, chat_history=history,
@@ -449,7 +465,7 @@ async def local_doc_chat(request: Request):
                 )
                 loop = asyncio.get_running_loop()
                 while True:
-                    result = await loop.run_in_executor(_executor, next, gen, _GEN_SENTINEL)
+                    result = await loop.run_in_executor(executor, next, gen, _GEN_SENTINEL)
                     if result is _GEN_SENTINEL:
                         break
                     resp, next_history = result
@@ -458,6 +474,11 @@ async def local_doc_chat(request: Request):
                         continue
                     chunk_str = chunk_data[SSE_DATA_PREFIX_LEN:]
                     if chunk_str.startswith("[DONE]"):
+                        # LLM completed successfully
+                        latency = (time.time() - t0) * 1000
+                        monitor_store.record_outcome(
+                            SERVICE_LLM, success=True, detail="streaming chat ok", latency_ms=latency,
+                        )
                         retrieval_docs = format_source_documents(resp["retrieval_documents"])
                         source_docs = format_source_documents(resp["source_documents"])
                         chat_data = {
@@ -494,6 +515,10 @@ async def local_doc_chat(request: Request):
             except Exception:
                 logging.error("Streaming chat error: %s", traceback.format_exc())
                 debug_logger.error("Streaming chat error: %s", traceback.format_exc())
+                latency = (time.time() - t0) * 1000
+                monitor_store.record_outcome(
+                    SERVICE_LLM, success=False, detail="streaming chat error", latency_ms=latency,
+                )
                 error_res = {
                     "code": CODE_LLM_ERROR, "msg": "LLM streaming error",
                     "question": question, "response": "",
@@ -504,27 +529,38 @@ async def local_doc_chat(request: Request):
 
         return StreamingResponse(generate_answer(), media_type="text/event-stream")
     else:
-        loop = asyncio.get_running_loop()
+        loop          = asyncio.get_running_loop()
+        executor      = _get_executor(request)
+        monitor_store = _get_monitor_store(request)
         gen = local_doc_qa.get_knowledge_based_answer(
             query=question, milvus_kb=faiss_kb, chat_history=history,
             streaming=False, rerank=rerank
         )
+        t0   = time.time()
         resp = None
         try:
             while True:
-                result = await loop.run_in_executor(_executor, next, gen, _GEN_SENTINEL)
+                result = await loop.run_in_executor(executor, next, gen, _GEN_SENTINEL)
                 if result is _GEN_SENTINEL:
                     break
                 resp, history = result
         except Exception:
             logging.error("Non-streaming chat error: %s", traceback.format_exc())
             debug_logger.error("Non-streaming chat error: %s", traceback.format_exc())
+            latency = (time.time() - t0) * 1000
+            monitor_store.record_outcome(
+                SERVICE_LLM, success=False, detail="non-streaming chat error", latency_ms=latency,
+            )
             return JSONResponse({
                 "code": CODE_LLM_ERROR, "msg": "LLM error",
                 "question": question, "response": "",
                 "history": history, "source_documents": [],
             })
         if resp is None:
+            latency = (time.time() - t0) * 1000
+            monitor_store.record_outcome(
+                SERVICE_LLM, success=False, detail="LLM returned no response", latency_ms=latency,
+            )
             return JSONResponse({
                 "code": CODE_LLM_ERROR, "msg": "LLM returned no response",
                 "question": question, "response": "",
@@ -534,6 +570,10 @@ async def local_doc_chat(request: Request):
         source_documents = format_source_documents(resp["source_documents"])
         # Use accumulated answer from history (resp["result"] is raw LLM output)
         accumulated_answer = history[-1][1] if history and history[-1] else ""
+        latency = (time.time() - t0) * 1000
+        monitor_store.record_outcome(
+            SERVICE_LLM, success=True, detail="non-streaming chat ok", latency_ms=latency,
+        )
         chat_data = {
             'user_id': user_id, 'kb_ids': kb_ids, 'query': question,
             'history': history, 'retrieval_documents': retrieval_documents,

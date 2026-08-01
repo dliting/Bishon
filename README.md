@@ -139,8 +139,15 @@ Bishon/V2/
 ├── logs/                   Logs
 ├── .env                    Configuration (gitignored; copy from .env.example)
 ├── requirements.txt        Python dependencies
-├── start.sh                Linux startup script
-└── start.bat               Windows startup script
+├── deploy.sh                  部署入口（向导或 CLI）
+├── start-docker.sh            Docker 启动 wrapper
+├── stop-docker.sh             Docker 停止 wrapper
+├── start-bare-metal.sh        Bare-metal 启动 wrapper
+├── stop-bare-metal.sh         Bare-metal 停止 wrapper
+└── scripts/
+    ├── common/                共享工具（utils/wizard/download/preflight）
+    ├── docker/                Docker 脚本（install/start/stop/upgrade/...）
+    └── bare-metal/            Bare-metal 脚本（start/stop）
 ```
 
 ## Requirements
@@ -167,9 +174,13 @@ cp .env.example .env
 # 4. Build the frontend (only required if dist/ is not present)
 cd front_end && npm ci && npm run build && cd ..
 
-# 5. Run
-./start.sh        # Linux / WSL
-start.bat         # Windows
+# 5. Download model weights (~1.3 GB total)
+bash scripts/download-models.sh
+# Qwen3-Reranker-0.6B from hf-mirror.com (China-friendly mirror);
+# PaddleOCR v3 models auto-download via paddleocr package.
+
+# 6. Run
+./start-bare-metal.sh        # Linux / WSL (or bash scripts/docker/deploy.sh for Docker)
 ```
 
 The service is now live at <http://localhost:8777>. Open <http://localhost:8777/bishon/>
@@ -254,16 +265,16 @@ on the deploy side.
 
 ```bash
 # Developer side (WSL Ubuntu 22.04, bishon conda env present)
-bash scripts/docker/bishon-build.sh   --version 2.1.0
+bash scripts/docker/build-image.sh   --version 2.1.0
 bash scripts/docker/make-release.sh   --version 2.1.0
 
 # Deploy side (any Linux host with Docker + NVIDIA Container Toolkit)
-bash scripts/docker/bishon-install.sh \
+bash scripts/docker/install.sh \
     --host-dir /var/lib/bishon \
     --release bishon-release-2.1.0.tar.gz \
     --image   bishon-cuda-image-2.1.0.tar
 # edit /var/lib/bishon/.env, then:
-bash /var/lib/bishon/scripts/bishon-start.sh --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
 Full instructions (env slimming, host-dir filesystem constraints, upgrade

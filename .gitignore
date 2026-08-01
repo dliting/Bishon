@@ -9,7 +9,12 @@ BISHON_DB/
 logs/
 
 # Models (download separately)
+# Match both real directory (`models/`) and the WSL symlink (`models` → models-shared).
 models/
+models
+
+# Release build output (make-release.sh writes here)
+dist/
 
 # IDE
 .idea/
@@ -28,13 +33,16 @@ front_end/node_modules_old/
 bishon_kernel/bishon_server/dist/
 bishon_kernel/bishon_server/static/
 
-# Frontend env files (only .env.example is tracked)
+# Frontend env files (only .env.example and .env.production are tracked)
 # Vite loads env files from front_end/, so the example lives there.
+# .env.production is tracked because it defines VITE_APP_WEB_PREFIX which
+# is critical for correct asset paths in the built dist.
 front_end/.env
 front_end/.env.*
 front_end/src/.env
 front_end/src/.env.*
 !front_end/.env.example
+!front_end/.env.production
 
 # Test artifacts
 .playwright-mcp/

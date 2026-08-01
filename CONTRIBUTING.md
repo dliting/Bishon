@@ -21,8 +21,7 @@ cp .env.example .env
 cd front_end && npm ci && npm run build && cd ..
 
 # 5. Run.
-./start.sh        # Linux / WSL
-start.bat         # Windows
+./start-bare-metal.sh        # Linux / WSL (or bash scripts/deploy.sh for Docker)
 ```
 
 ## Project layout

@@ -10,8 +10,31 @@ class TestHealthEndpoint:
         resp = await api_client.get("/api/health")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "ok"
-        assert body["version"] == "2.0.0"
+        # Enhanced health check returns detailed status
+        assert body["status"] in ("ok", "degraded")
+        assert "version" in body
+        assert "uptime_seconds" in body
+        assert "services" in body
+        assert "queue" in body
+
+    async def test_health_services_structure(self, api_client):
+        resp = await api_client.get("/api/health")
+        body = resp.json()
+        services = body["services"]
+        expected_services = {"llm", "embedding", "rerank", "ocr", "faiss", "sqlite"}
+        assert set(services.keys()) == expected_services
+        for name, svc in services.items():
+            assert "status" in svc
+            assert "detail" in svc
+            assert svc["status"] in ("healthy", "unhealthy", "unknown", "disabled")
+
+    async def test_health_queue_structure(self, api_client):
+        resp = await api_client.get("/api/health")
+        body = resp.json()
+        queue = body["queue"]
+        assert "pending_tasks" in queue
+        assert "active_tasks" in queue
+        assert "max_workers" in queue
 
 
 @pytest.mark.asyncio

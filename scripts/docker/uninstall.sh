@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# bishon-uninstall.sh — remove the container and image. Data is preserved by
+# uninstall.sh — remove the container and image. Data is preserved by
 # default.
 #
 # Usage:
-#   bash bishon-uninstall.sh --host-dir <dir> [--purge-data]
+#   bash uninstall.sh --host-dir <dir> [--purge-data]
 #
 # Without --purge-data:
 #   - Stops + removes the container
@@ -39,8 +39,8 @@ done
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 export BISHON_LOG_TAG=uninstall
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }

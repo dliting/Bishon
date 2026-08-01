@@ -14,44 +14,53 @@
                 <p
                   class="question-text"
                   :class="[
-                    !item.source.length ? 'change-radius' : '',
+                    !item.groupedSource?.length ? 'change-radius' : '',
                     item.showTools ? '' : 'flashing',
                   ]"
                   v-html="item.answer"
                 ></p>
               </div>
-              <template v-if="item.source.length">
+              <template v-if="item.groupedSource?.length">
                 <div
-                  v-for="(sourceItem, sourceIndex) in item.source"
-                  :key="sourceIndex"
+                  v-for="(group, groupIndex) in item.groupedSource"
+                  :key="groupIndex"
                   class="data-source"
                 >
-                  <p v-show="sourceItem.file_name" class="control">
-                    <span class="tips">{{ common.dataSource }}{{ sourceIndex + 1 }}:</span
-                    ><a class="file" @click="openSourceFile(sourceItem)">{{
-                      sourceItem.file_name
+                  <p v-show="group.file_name" class="control">
+                    <span class="tips">{{ common.dataSource }}{{ groupIndex + 1 }}:</span
+                    ><a class="file" @click="openSourceFile(group.chunks[0])">{{
+                      group.file_name
                     }}</a>
+                    <span v-if="group.chunks.length > 1" class="chunk-count"
+                      >({{ group.chunks.length }} {{ common.chunkCount }})</span
+                    >
                     <SvgIcon
-                      v-show="sourceItem.showDetailDataSource"
+                      v-show="isGroupExpanded(index, groupIndex)"
                       name="iconup"
-                      @click="showDetail(item, sourceIndex)"
+                      @click="toggleGroupDetail(index, groupIndex)"
                     />
                     <SvgIcon
-                      v-show="!sourceItem.showDetailDataSource"
+                      v-show="!isGroupExpanded(index, groupIndex)"
                       name="icondown"
-                      @click="showDetail(item, sourceIndex)"
+                      @click="toggleGroupDetail(index, groupIndex)"
                     />
                   </p>
                   <Transition name="sourceitem">
-                    <div class="source-content">
-                      <p
-                        v-show="sourceItem.showDetailDataSource"
-                        v-html="sourceItem.content.replaceAll('\n', '<br/>')"
-                      ></p>
-                      <p class="score">
-                        <span class="tips">{{ common.correlation }}</span
-                        >{{ sourceItem.score }}
-                      </p>
+                    <div v-show="isGroupExpanded(index, groupIndex)" class="source-content">
+                      <div
+                        v-for="(chunk, chunkIdx) in group.chunks"
+                        :key="chunkIdx"
+                        class="chunk-item"
+                      >
+                        <p v-if="group.chunks.length > 1" class="chunk-label">
+                          {{ common.chunkLabel }}{{ chunkIdx + 1 }}
+                        </p>
+                        <p v-html="chunk.content?.replaceAll('\n', '<br/>') || ''"></p>
+                        <p class="score">
+                          <span class="tips">{{ common.correlation }}</span
+                          >{{ chunk.score }}
+                        </p>
+                      </div>
                     </div>
                   </Transition>
                 </div>
@@ -135,7 +144,7 @@
 </template>
 <script lang="ts" setup>
 import { apiBase } from '@/services';
-import { IChatItem, IDataSourceItem } from '@/utils/types';
+import { IChatItem, IDataSourceItem, IGroupedSource } from '@/utils/types';
 import { useThrottleFn, useClipboard } from '@vueuse/core';
 import { message } from 'ant-design-vue';
 import SvgIcon from './SvgIcon.vue';
@@ -237,6 +246,7 @@ const addAnswer = (question: string) => {
     like: false,
     unlike: false,
     source: [],
+    groupedSource: [],
     showTools: false,
   });
 };
@@ -313,7 +323,9 @@ const send = () => {
       }
 
       if (res?.source_documents?.length) {
-        QA_List.value[QA_List.value.length - 1].source = res?.source_documents;
+        const item = QA_List.value[QA_List.value.length - 1];
+        item.source = res?.source_documents;
+        item.groupedSource = groupSources(res?.source_documents);
       }
 
       if (res?.history.length) {
@@ -352,9 +364,52 @@ const reAnswer = (item: IChatItem) => {
   send();
 };
 
-// Toggle whether detailed sources are shown.
-const showDetail = (item: IChatItem, index) => {
-  item.source[index].showDetailDataSource = !item.source[index].showDetailDataSource;
+// Group source documents by file_name for UI display.
+// Same file_name appears only once; chunks are listed inside with individual scores.
+const groupSources = (sources: IDataSourceItem[]): IGroupedSource[] => {
+  const groups: IGroupedSource[] = [];
+  const seen = new Map<string, number>();
+  for (let i = 0; i < sources.length; i++) {
+    const src = sources[i];
+    // Use file_name as key; fall back to unique index so unnamed sources
+    // are never merged into a single invisible group.
+    const key = src.file_name || `__unnamed_${i}__`;
+    if (seen.has(key)) {
+      groups[seen.get(key)!].chunks.push(src);
+    } else {
+      seen.set(key, groups.length);
+      groups.push({
+        file_name: src.file_name || '',
+        file_id: src.file_id,
+        chunks: [src],
+      });
+    }
+  }
+  return groups;
+};
+
+// Backfill groupedSource for items restored from localStorage (pre-migration).
+for (const item of QA_List.value) {
+  if (item.source?.length && !item.groupedSource?.length) {
+    item.groupedSource = groupSources(item.source);
+  }
+}
+
+// Expand/collapse state keyed by "itemIndex-groupIndex".
+// Separated from data model so it's naturally reactive and not persisted.
+const expandedGroups = ref<Record<string, boolean>>({});
+
+const groupKey = (itemIndex: number, groupIndex: number) => `${itemIndex}-${groupIndex}`;
+
+const isGroupExpanded = (itemIndex: number, groupIndex: number) =>
+  !!expandedGroups.value[groupKey(itemIndex, groupIndex)];
+
+const toggleGroupDetail = (itemIndex: number, groupIndex: number) => {
+  const key = groupKey(itemIndex, groupIndex);
+  expandedGroups.value = {
+    ...expandedGroups.value,
+    [key]: !expandedGroups.value[key],
+  };
 };
 
 // Open the original source document.
@@ -446,6 +501,7 @@ scrollBottom();
   max-width: 1239px;
   height: calc(100vh - 54px - 48px - 28px - 28px - 32px - 50px);
   overflow-y: auto;
+  scrollbar-color: #c1c1c1 transparent;
   padding-top: 28px;
 
   #chat-ul {
@@ -527,11 +583,34 @@ scrollBottom();
       }
 
       .score {
-        margin-top: 26px;
+        margin-top: 8px;
       }
 
       .source-content {
-        margin-top: 26px;
+        margin-top: 12px;
+      }
+
+      .chunk-count {
+        color: $title2;
+        font-size: 12px;
+        margin-left: 4px;
+        margin-right: 8px;
+      }
+
+      .chunk-item {
+        padding-bottom: 12px;
+        border-bottom: 1px dashed #e0e0e0;
+
+        &:last-child {
+          border-bottom: none;
+          padding-bottom: 0;
+        }
+      }
+
+      .chunk-label {
+        color: $title2;
+        font-size: 12px;
+        margin-bottom: 4px;
       }
 
       .tips {

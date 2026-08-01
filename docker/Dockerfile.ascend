@@ -7,7 +7,7 @@
 #   - Install CANN toolkit + Python wheels for torch-npu / mindspore if used
 #   - Replace `--gpus all` in bishon-start.sh with `--device /dev/davinci0`
 #     (or `--device /dev/davinciX` for multi-card) plus required CANN env vars
-#   - The bishon-env in the release tarball must be rebuilt against the same
+#   - The python-env in the release tarball must be rebuilt against the same
 #     CANN version (faiss-cpu is fine; paddlepaddle + torch need NPU builds)
 #
 # Build with: bash scripts/docker/bishon-build.sh --version <ver> --accelerator ascend

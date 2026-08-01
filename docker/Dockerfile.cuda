@@ -3,8 +3,8 @@
 # Design notes:
 #   - miniconda3 base lives in the image (tied to container glibc).
 #   - The bishon conda env is NOT baked in; it ships in the release tarball
-#     and is bind-mounted at /opt/bishon-data/bishon-env. The entrypoint
-#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-data/bishon-env so
+#     and is bind-mounted at /opt/bishon-data/python-env. The entrypoint
+#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-data/python-env so
 #     baked-in absolute paths inside the env still resolve.
 #   - Timezone is Asia/Shanghai (avoids container UTC vs business local-time skew).
 #   - HEALTHCHECK uses the in-process /api/health endpoint.
@@ -53,10 +53,13 @@ RUN MINICONDA_URLS="https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Mini
     && "$CONDA_DIR/bin/conda" clean -afy \
     && ln -s "$CONDA_DIR/etc/profile.d/conda.sh" /etc/profile.d/conda.sh
 
-COPY entrypoint.sh /entrypoint.sh
-# CRLF guard: if entrypoint.sh was edited on Windows it may have CR endings,
+# Stub launcher baked into the image. Real entrypoint lives at
+# /opt/bishon-data/bishon/docker/entrypoint.sh (bind-mounted from host-dir)
+# so it can be upgraded without rebuilding the image.
+COPY launcher.sh /launcher.sh
+# CRLF guard: if launcher.sh was edited on Windows it may have CR endings,
 # which would make the container fail with `/usr/bin/env: 'bash\r': No such file`.
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /launcher.sh && chmod +x /launcher.sh
 
 EXPOSE 8777
 # start-period matches bishon-start.sh's 180s polling window. Cold start
@@ -65,4 +68,4 @@ EXPOSE 8777
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD curl -fsS http://localhost:8777/api/health || exit 1
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/launcher.sh"]

@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Bishon V2 container entrypoint.
+# Bishon V2 container entrypoint (orchestrator).
 #
-# Responsibilities:
-#   1. Validate that the bind-mounted /opt/bishon-data has the expected layout.
-#   2. Symlink /opt/miniconda3/envs/bishon -> /opt/bishon-data/bishon-env so
-#      baked-in absolute paths inside the env resolve correctly.
-#   3. cd into the source dir and exec uvicorn.
+# Logic lives in sibling entrypoint_lib/*.sh modules — source them and call
+# the public function from each. Each module < 60 lines, single responsibility,
+# independently testable (bats source + call).
 #
-# The container MUST be started with:
+# The container is started with:
 #   -v <host-dir>:/opt/bishon-data
 #   --env-file <host-dir>/.env
 #
@@ -17,68 +15,34 @@
 set -euo pipefail
 
 DATA_ROOT=/opt/bishon-data
-ENV_LINK=/opt/miniconda3/envs/bishon
-PY="$ENV_LINK/bin/python"
+ENTRYPOINT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LIB_DIR="$ENTRYPOINT_DIR/entrypoint_lib"
 
 log() { echo "[entrypoint] $*"; }
 die() { echo "[entrypoint] FATAL: $*" >&2; exit 1; }
 
 # --- 1. Volume layout validation --------------------------------------------
-[ -d "$DATA_ROOT/bishon-env/bin" ] || \
-    die "$DATA_ROOT/bishon-env missing or incomplete. Run bishon-install.sh."
-[ -f "$DATA_ROOT/.env" ] || \
-    die "$DATA_ROOT/.env missing. Run bishon-install.sh."
-[ -d "$DATA_ROOT/bishon/bishon_kernel" ] || \
-    die "$DATA_ROOT/bishon/bishon_kernel missing. Run bishon-publish.sh."
-[ -d "$DATA_ROOT/models" ] || \
-    die "$DATA_ROOT/models missing. Run bishon-install.sh."
+[ -d "$DATA_ROOT/python-env/bin" ]        || die "$DATA_ROOT/python-env missing or incomplete. Run install.sh."
+[ -f "$DATA_ROOT/.env" ]                  || die "$DATA_ROOT/.env missing. Run install.sh."
+[ -d "$DATA_ROOT/bishon/bishon_kernel" ]  || die "$DATA_ROOT/bishon/bishon_kernel missing. Run upgrade.sh."
+[ -d "$DATA_ROOT/models" ]                || die "$DATA_ROOT/models missing. Run install.sh."
 
-# --- 2. Symlink the bind-mounted env into miniconda3 standard path -----------
-# This makes baked-in shebangs and absolute paths inside the env (which were
-# /opt/miniconda3/envs/bishon/... when the env was created in WSL) resolve
-# correctly inside the container.
-mkdir -p /opt/miniconda3/envs
-if [ ! -e "$ENV_LINK" ]; then
-    ln -s "$DATA_ROOT/bishon-env" "$ENV_LINK"
-    log "linked $ENV_LINK -> $DATA_ROOT/bishon-env"
-elif [ ! -L "$ENV_LINK" ]; then
-    die "$ENV_LINK exists but is not a symlink. Container state corrupted."
-fi
+# --- 2. Source lib modules --------------------------------------------------
+[ -d "$LIB_DIR" ] || die "$LIB_DIR missing — release tarball incomplete."
+source "$LIB_DIR/bind_python_env.sh"
+source "$LIB_DIR/redirect_runtime_dirs.sh"
+source "$LIB_DIR/bind_node_env.sh"
+source "$LIB_DIR/frontend_rebuild.sh"
 
-# --- 2b. Redirect source-relative BISHON_DB and logs to the host-dir top ------
-# Why: model_config.py / faiss_client.py / custom_log.py compute paths as
-# root_path/BISHON_DB/{metadata.db,faiss,content} and root_path/logs/{debug,qa}.
-# root_path is the source dir (/opt/bishon-data/bishon), so without redirection
-# those writes would land INSIDE the source dir — getting wiped on publish and
-# (in WSL tests) hitting NTFS via 9p, which breaks SQLite WAL.
-# We want them at /opt/bishon-data/{BISHON_DB,logs} (sibling of source),
-# preserved across publishes. Symlinks do this transparently to the app code.
-redirect_dir() {
-    local name="$1"      # e.g. BISHON_DB
-    local target="$DATA_ROOT/$name"
-    local link="$DATA_ROOT/bishon/$name"
-    mkdir -p "$target"
-    if [ -L "$link" ]; then
-        return 0
-    fi
-    if [ ! -e "$link" ]; then
-        ln -s "$target" "$link"
-        log "linked $link -> $target"
-        return 0
-    fi
-    # Exists as a real dir/file — try to remove if empty, else refuse.
-    if rmdir "$link" 2>/dev/null; then
-        ln -s "$target" "$link"
-        log "linked $link -> $target (replaced empty dir)"
-        return 0
-    fi
-    die "$link exists and is non-empty. Refusing to overwrite. Migrate its contents to $target and remove $link before restart."
-}
-redirect_dir BISHON_DB
-redirect_dir logs
+# --- 3. Run setup steps in order --------------------------------------------
+bind_python_env           # existing: symlink python-env into miniconda3 path
+redirect_runtime_dirs     # existing: redirect BISHON_DB + logs to host-dir top
+bind_node_env             # NEW: no-op if $DATA_ROOT/node-env/ missing
+maybe_rebuild_frontend    # NEW: no-op if Node not bound
 
-# --- 3. Launch uvicorn ------------------------------------------------------
-[ -x "$PY" ] || die "$PY not executable. bishon-env may be corrupted."
+# --- 4. Launch uvicorn ------------------------------------------------------
+PY="/opt/miniconda3/envs/bishon/bin/python"
+[ -x "$PY" ] || die "$PY not executable. python-env may be corrupted."
 cd "$DATA_ROOT/bishon"
 
 # Log resolved LLM/embedding endpoints (no keys) so ops can debug

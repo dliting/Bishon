@@ -113,8 +113,24 @@ cp .env.example .env
 cd front_end && npm ci --legacy-peer-deps && npm run build && cd ..
 cp -r front_end/dist bishon_kernel/bishon_server/
 
-# 下载模型（参考 models/Qwen3-Reranker-0.6B/.git/config 和 paddleocr_models 来源）
+# 下载模型（Qwen3-Reranker 0.6B ~1.2 GB + PaddleOCR v3 ~100 MB）
+bash scripts/common/download-models.sh
+# 或先 dry-run 看源：
+# bash scripts/common/download-models.sh --dry-run
 ```
+
+`scripts/common/download-models.sh` 默认从国内 HuggingFace 镜像（`hf-mirror.com`）拉 Reranker，触发 PaddleOCR 自动下载。脚本支持：
+- `--target <dir>` 自定义模型目录（默认 `./models`）
+- `--skip-rerank` / `--skip-paddleocr` 跳过其中一个
+- `--offline <tar.gz>` 从已有的 models tarball 解压（内网部署用）
+- `--dry-run` 仅打印下载源，不实际下载
+
+> **注意**：`--target` 只影响 Qwen3-Reranker 的下载位置。PaddleOCR 模型由 `paddleocr` 包按 `bishon_kernel/configs/model_config.py` 推导的路径（`<repo-root>/models/paddleocr_models/`）放置，与 `--target` 无关——这是应用代码的硬约束。如需把整套模型放到别处，建议符号链接 `models/` 整目录而不是改 `--target`。
+
+环境变量：
+- `HF_ENDPOINT` 自定义 HuggingFace 镜像（默认 `https://hf-mirror.com`）
+- `RERANK_REPO` 自定义 Reranker 仓库 ID（默认 `Qwen/Qwen3-Reranker-0.6B`）
+- `BISHON_PY` bishon conda env 的 python 路径（默认 `/opt/miniconda3/envs/bishon/bin/python`）
 
 ### 5. 验证
 
@@ -182,14 +198,35 @@ bash run_all_tests.sh
 
 ```bash
 # 构建镜像（联网，下载 cuda base + miniconda）
-bash scripts/docker/bishon-build.sh --version 2.1.0
+bash scripts/docker/build-image.sh --version 2.1.0
 
-# 制作离线发布包（含 env、源码、模型、镜像 tar）
+# 制作离线发布包（含 env、源码、模型、镜像 tar、可选 node-env tar）
 bash scripts/docker/make-release.sh --version 2.1.0
 
 # 产物在 dist/
 ls -la dist/
+# 期望看到：bishon-release-2.1.0.tar.gz + bishon-node-2.1.0.tar.gz + ...
 ```
+
+### make-release.sh 的 Node 工具链选项
+
+`make-release.sh` 默认会额外产出 `bishon-node-<ver>.tar.gz`（约 350 MB），里面是 Node 二进制 + Bishon 前端 `node_modules`。部署侧通过 `install.sh --node <tar>` / `upgrade.sh --node <tar>` 解压到 `$HOST_DIR/node-env/`，容器启动 entrypoint 会自动绑定，启用[前端热重构](./deployment.md#前端热重构容器启动按需-npm-run-build)。
+
+环境变量：
+
+| 变量 | 默认 | 用途 |
+|---|---|---|
+| `NODE_VERSION` | `22.7.0` | Node.js 版本。LTS 列表见 https://nodejs.org/en/about/previous-releases |
+| `NODE_MIRROR` | `https://nodejs.org/dist/` | 下载源。国内可设 `https://npmmirror.com/mirrors/node/` 加速 |
+| `NODE_ARCH` | 自动（`uname -m`） | `linux-x64` 或 `linux-arm64` |
+
+跳过 node-env 打包：
+
+```bash
+bash scripts/docker/make-release.sh --version 2.1.0 --skip-node   # 仅源码 + env + models
+```
+
+缓存：Node tarball 缓存在 `dist/.node-cache/`（被 `.gitignore` 覆盖），重复运行不会重下。
 
 ## 常见问题
 
@@ -201,9 +238,9 @@ ls -la dist/
 # 开发机：重新打包
 bash scripts/docker/make-release.sh --version <new>
 # 把新 tarball 拷到部署机，再
-bash <host-dir>/scripts/bishon-publish.sh --host-dir <host-dir> --release <new-tar>
-bash <host-dir>/scripts/bishon-stop.sh  --host-dir <host-dir>
-bash <host-dir>/scripts/bishon-start.sh --host-dir <host-dir>
+bash <host-dir>/scripts/upgrade.sh --host-dir <host-dir> --release <new-tar>
+bash <host-dir>/scripts/docker/stop.sh  --host-dir <host-dir>
+bash <host-dir>/scripts/docker/start.sh --host-dir <host-dir>
 ```
 
 详见 [`docs/deployment.md` § 部署机：升级](./deployment.md#部署机升级publish)。

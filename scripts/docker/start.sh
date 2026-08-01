@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bishon-start.sh — start the Bishon V2 container on an installed host.
+# start.sh — start the Bishon V2 container on an installed host.
 #
 # Usage:
-#   bash bishon-start.sh --host-dir <dir>
+#   bash start.sh --host-dir <dir>
 #
 # Reads the installed image tag from $HOST_DIR/.image-tag (written by install).
 # Restarts cleanly if a same-name container already exists.
@@ -13,7 +13,26 @@ HOST_DIR=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2"; shift 2 ;;
-        -h|--help) echo "usage: $0 --host-dir <dir>"; exit 0 ;;
+        -h|--help)
+            cat <<EOF
+start.sh — Start the Bishon V2 container.
+
+Reads .image-tag and .accelerator from <host-dir>, runs the container with
+-v <host-dir>:/opt/bishon-data + --env-file <host-dir>/.env + GPU flags,
+then polls /api/health up to 180s (cold-start budget for model loading).
+
+USAGE
+  bash $0 --host-dir <dir>
+
+FLAGS
+  --host-dir <dir>   Directory created by install.sh. Must contain
+                     .image-tag, .accelerator (optional, defaults to cuda),
+                     and .env.
+
+EXAMPLES
+  bash $0 --host-dir /var/lib/bishon
+EOF
+            exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -21,14 +40,14 @@ done
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir>" >&2; exit 1; }
 
 export BISHON_LOG_TAG=start
-# shellcheck source=lib/common.sh
-source "$(dirname "$0")/lib/common.sh"
+# shellcheck source=../common/utils.sh
+source "$(dirname "$0")/../common/utils.sh"
 
 log() { bishon_log "$@"; }
 die() { bishon_die "$@"; }
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
-[ -f "$HOST_DIR/.image-tag" ] || die "$HOST_DIR/.image-tag missing. Run bishon-install.sh first."
+[ -f "$HOST_DIR/.image-tag" ] || die "$HOST_DIR/.image-tag missing. Run install.sh first."
 
 IMAGE="$(cat "$HOST_DIR/.image-tag")"
 ACC="$(cat "$HOST_DIR/.accelerator" 2>/dev/null || echo cuda)"
@@ -36,7 +55,7 @@ ACC="$(cat "$HOST_DIR/.accelerator" 2>/dev/null || echo cuda)"
 command -v docker >/dev/null || die "docker not found on PATH"
 command -v curl >/dev/null   || die "curl not found on PATH"
 
-[ -f "$HOST_DIR/.env" ] || die "$HOST_DIR/.env missing. Run bishon-install.sh first."
+[ -f "$HOST_DIR/.env" ] || die "$HOST_DIR/.env missing. Run install.sh first."
 
 # --- 1. Remove any same-name container ---------------------------------------
 if docker ps -a --format '{{.Names}}' | grep -qx bishon; then
@@ -74,6 +93,19 @@ EOF
 esac
 
 # --- 3. Run ------------------------------------------------------------------
+# In WSL, Docker Desktop's host.docker.internal resolves to the Docker bridge
+# (172.16.x.x), not the Windows host. Override it to the WSL gateway so
+# containers can reach services like Ollama running on Windows.
+# In native Linux, this is skipped — Docker Desktop or the operator handles it.
+ADD_HOST_FLAG=()
+if grep -qi microsoft /proc/version 2>/dev/null; then
+    HOST_GATEWAY="$(ip route | grep default | awk '{print $3}' 2>/dev/null || true)"
+    if [ -n "$HOST_GATEWAY" ]; then
+        ADD_HOST_FLAG=(--add-host "host.docker.internal:$HOST_GATEWAY")
+        log "host.docker.internal → $HOST_GATEWAY (WSL gateway)"
+    fi
+fi
+
 log "starting container 'bishon' (image=$IMAGE, acc=$ACC)"
 docker run -d \
     --name bishon \
@@ -81,6 +113,7 @@ docker run -d \
     -p 8777:8777 \
     --env-file "$HOST_DIR/.env" \
     -v "$HOST_DIR:/opt/bishon-data" \
+    "${ADD_HOST_FLAG[@]}" \
     --restart unless-stopped \
     "$IMAGE" \
     >/dev/null
@@ -97,15 +130,44 @@ for i in $(seq 1 90); do
         # Static-asset check (避坑指南 #4 陷阱 2). A missing dist/ would let
         # the API come up while the UI is broken — fail loudly rather than
         # discover at user-complaint time.
+        dist_index="$HOST_DIR/bishon/bishon_kernel/bishon_server/dist/bishon/index.html"
         http_code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8777/bishon/ || true)"
         if [ "$http_code" != "200" ]; then
-            dist_index="$HOST_DIR/bishon/bishon_kernel/bishon_server/dist/bishon/index.html"
             if [ ! -f "$dist_index" ]; then
-                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm ci && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + bishon-publish.sh."
+                die "/bishon/ returned HTTP $http_code and $dist_index is missing. Rebuild frontend (cd front_end && npm run build), copy front_end/dist to bishon_kernel/bishon_server/, then re-run make-release.sh + upgrade.sh."
             fi
             die "/bishon/ returned HTTP $http_code despite $dist_index existing. Check container logs: docker logs bishon"
         fi
         log "UI assets served at /bishon/ (200 OK)"
+        # Verify a JS asset is reachable (catches wrong base path where
+        # index.html references /assets/... instead of /bishon/assets/...).
+        if [ -f "$dist_index" ]; then
+            asset_path="$(grep -oP 'src="/bishon/assets/[^"]+' "$dist_index" 2>/dev/null | head -1 | sed 's/src="//')"
+            if [ -n "$asset_path" ]; then
+                asset_code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8777$asset_path" || true)"
+                if [ "$asset_code" != "200" ]; then
+                    die "UI index.html OK but asset $asset_path returned HTTP $asset_code. Frontend base path may be wrong — check front_end/.env.production has VITE_APP_WEB_PREFIX=/bishon."
+                fi
+                log "UI asset $asset_path OK (200)"
+            fi
+        fi
+        log ""
+        log "✓ 服务已启动"
+        log "  Web:    http://localhost:8777/bishon/"
+        log "  API:    http://localhost:8777/api/health"
+        log ""
+        log "  日志:"
+        log "    容器:  docker logs -f bishon"
+        log "    应用:  tail -f $HOST_DIR/logs/debug_logs/debug.log"
+        log "    问答:  tail -f $HOST_DIR/logs/qa_logs/qa.log"
+        log ""
+        log "  停止: bash $HOST_DIR/scripts/docker/stop.sh --host-dir $HOST_DIR"
+        log "  升级: bash $HOST_DIR/scripts/docker/upgrade.sh --host-dir $HOST_DIR --release <new-tar>"
+        if [ -d "$HOST_DIR/node-env" ] && [ ! -f "$HOST_DIR/node-env/.skip-node" ]; then
+            log "  前端热重构: 已启用（改 front_end/src 后重启容器自动 npm run build）"
+        else
+            log "  前端热重构: 未启用（如需改前端，运行 install.sh --node <tar>）"
+        fi
         exit 0
     fi
     sleep 2

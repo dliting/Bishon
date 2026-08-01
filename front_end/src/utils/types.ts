@@ -6,13 +6,20 @@ export interface IKnowledgeItem {
 }
 
 export interface IDataSourceItem {
-  dataSource?: string; // data source
-  detailDataSource?: string; // detailed source info
-  file_name: string | null; // file name
-  content: string | null; // content
-  score: number | null; // score
+  file_name: string | null;
+  content: string | null;
+  score: number | null;
   file_id: string | null;
-  showDetailDataSource?: boolean; // whether to show detailed source info
+  embed_version?: string;
+  retrieval_query?: string;
+  kernel?: string;
+}
+
+// Grouped source documents for UI display (same file_name aggregated).
+export interface IGroupedSource {
+  file_name: string;
+  file_id: string | null;
+  chunks: IDataSourceItem[];
 }
 
 export interface IChatItem {
@@ -25,6 +32,7 @@ export interface IChatItem {
 
   showTools?: boolean; // whether the current turn has ended (show copy tooling + stop blinking)
   source?: Array<IDataSourceItem>;
+  groupedSource?: Array<IGroupedSource>; // pre-computed for UI display
 }
 
 // URL parsing status (for frontend display).

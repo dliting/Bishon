@@ -3,8 +3,9 @@
 # Each non-comment, non-blank line is a path (relative to repo root) that
 # ships in the release tarball under `bishon/`. Directories are included
 # recursively. Common build artifacts (__pycache__, node_modules, .git,
-# .pytest_cache, front_end/dist, etc.) are filtered by rsync excludes in
-# make-release.sh regardless of manifest entries — keep those out here.
+# .pytest_cache, front_end/dist, bishon_kernel/bishon_server/dist, etc.)
+# are filtered by rsync excludes in make-release.sh regardless of manifest
+# entries — keep those out here.
 #
 # To add a ship path: append a line. To remove: delete the line.
 # Keep this file readable; group related paths under section comments.
@@ -18,16 +19,15 @@ tests
 docs
 mkdocs.yml
 
-# === Image build + deploy ===
+# === Image build ===
 docker
-scripts
 
-# === Bare-metal entry points ===
-start.sh
-start.bat
-stop.sh
-stop.bat
-run_all_tests.sh
+# NOTE: `scripts/` and the root wrappers (`start-docker.sh`, `stop-docker.sh`,
+# `start-bare-metal.sh`, `stop-bare-metal.sh`, `run_all_tests.sh`, `deploy.sh`)
+# are NOT listed here. make-release.sh copies them to the bundle root so the
+# bundle is self-deployable (operator runs `bash deploy.sh` from bundle root).
+# Listing them here too would create duplicate copies under `bishon/` that
+# drift apart from the root-level ones.
 
 # === Python project ===
 pyproject.toml
@@ -39,6 +39,7 @@ requirements-dev.txt
 README.md
 README.zh-CN.md
 CHANGELOG.md
+CHANGELOG.zh-CN.md
 LICENSE
 NOTICE
 VERSION

@@ -58,8 +58,7 @@ tests/
         chat.spec.ts                     # 问答交互（SSE 流式）
         startup.spec.ts                  # 启动→使用→停止 全生命周期
   scripts/
-    test_start_sh.sh                     # start.sh 脚本测试
-    test_start_bat.bat                   # start.bat 脚本测试（Windows）
+    test_start_sh.bats                   # start.sh 脚本测试
 
 docs/
   design/
@@ -410,7 +409,7 @@ export default defineConfig({
 
 | 测试用例 | 说明 |
 |---------|------|
-| 脚本存在 | `start.bat` 文件存在 |
+| 脚本存在 | `start.sh` 文件存在 |
 | 目录创建 | `logs\debug_logs` 等目录被创建 |
 | 硬编码路径问题 | 标记 `<your-conda-path>` 为待修复项，测试中跳过 conda 激活验证 |
 

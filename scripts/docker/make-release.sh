@@ -329,7 +329,10 @@ log "creating $DIST_TGZ (~this step is slow due to gzip)"
 tar -czf "$TMP_TGZ" -C "$DIST" \
     --exclude 'bishon-models-*.tar.gz'        \
     --exclude 'bishon-models-*.tar.gz.sha256' \
+    --exclude 'bishon-node-*.tar.gz'          \
+    --exclude 'bishon-node-*.tar.gz.sha256'   \
     --exclude 'bishon-cuda-image-*.tar'       \
+    --exclude 'node-env'                       \
     .
 mv "$TMP_TGZ" "$DIST_TGZ"
 (cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")

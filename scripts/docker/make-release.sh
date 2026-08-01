@@ -270,7 +270,10 @@ else
         die "front_end/node_modules missing on build host. Run 'cd front_end && npm ci --legacy-peer-deps' first, or pass --skip-frontend + --skip-node for source-only release."
     fi
     log "copying node_modules (~$(du -sh "$REPO_ROOT/front_end/node_modules" 2>/dev/null | cut -f1 || echo '?'))"
-    # Exclude .cache (vite/webpack intermediate); everything else stays.
+    # Exclude only transient caches (.cache: vite/webpack intermediate state).
+    # IMPORTANT: do NOT exclude `.bin/` — vite, vue-cli-service, etc. resolve their
+    # shebangs through these symlinks; stripping them breaks `npm run build` in
+    # the container. rsync -a preserves symlinks by default.
     rsync -a --exclude '.cache' "$REPO_ROOT/front_end/node_modules/" "$DIST/node-env/node_modules/"
 
     # 3c.3 Version stamp for deploy-side quick identification.

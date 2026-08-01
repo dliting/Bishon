@@ -22,6 +22,8 @@ declare module 'vue' {
     AModal: typeof import('ant-design-vue/es')['Modal']
     APopconfirm: typeof import('ant-design-vue/es')['Popconfirm']
     APopover: typeof import('ant-design-vue/es')['Popover']
+    AResult: typeof import('ant-design-vue/es')['Result']
+    ASpin: typeof import('ant-design-vue/es')['Spin']
     ATable: typeof import('ant-design-vue/es')['Table']
     Chat: typeof import('./src/components/Chat.vue')['default']
     DefaultModal: typeof import('./src/components/DefaultModal.vue')['default']

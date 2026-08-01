@@ -18,6 +18,14 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/monitor',
+    name: 'monitor',
+    component: () => import('@/views/Monitor.vue'),
+    meta: {
+      title: '系统监控',
+    },
+  },
+  {
     path: '/:catchAll(.*)',
     redirect: '/home',
   },

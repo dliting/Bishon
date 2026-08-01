@@ -17,6 +17,7 @@ from bishon_kernel.connector.database.sqlite.sqlite_client import KnowledgeBaseM
 from bishon_kernel.connector.embedding.openai_embedding import OpenAIEmbeddings
 from bishon_kernel.connector.llm import OpenAILLM
 from bishon_kernel.connector.rerank.rerank_client import LocalRerankBackend
+from bishon_kernel.monitoring.status_store import SERVICE_EMBEDDING, SERVICE_FAISS
 from bishon_kernel.utils.custom_log import debug_logger
 from bishon_kernel.utils.general_utils import get_time
 
@@ -38,6 +39,7 @@ class LocalDocQA:
         self.kb_manager: KnowledgeBaseManager = None
         self.rerank_backend: LocalRerankBackend = None
         self.ocr_engine = None
+        self.monitor_store = None  # Set by app.py after init
 
     # PaddleOCR is not thread-safe (it shares the PaddlePaddle GPU context),
     # so OCR calls must be serialized — do not switch to ThreadPoolExecutor.
@@ -163,24 +165,43 @@ class LocalDocQA:
             start = time.time()
             try:
                 local_file.create_embedding()
+                if self.monitor_store:
+                    latency = (time.time() - start) * 1000
+                    self.monitor_store.record_outcome(
+                        SERVICE_EMBEDDING, success=True, detail="embedding ok", latency_ms=latency,
+                    )
             except Exception:
                 debug_logger.error('embedding error: %s', traceback.format_exc())
                 self.kb_manager.update_file_status(local_file.file_id, status='red')
+                if self.monitor_store:
+                    latency = (time.time() - start) * 1000
+                    self.monitor_store.record_outcome(
+                        SERVICE_EMBEDDING, success=False, detail="embedding error", latency_ms=latency,
+                    )
                 continue
             end = time.time()
             debug_logger.info('embedding time: %.2f, embs: %d', end - start, len(local_file.embs))
 
             self.kb_manager.update_chunk_size(local_file.file_id, len(local_file.docs))
+            insert_start = time.time()
             ret = faiss_kb.insert_files(
                 local_file.file_id, local_file.file_name, local_file.file_path,
                 local_file.docs, local_file.embs, kb_id=kb_id
             )
-            insert_time = time.time()
-            debug_logger.info('insert time: %.2f', insert_time - end)
+            faiss_latency = (time.time() - insert_start) * 1000
+            debug_logger.info('insert time: %.2f', time.time() - insert_start)
             if ret:
                 self.kb_manager.update_file_status(local_file.file_id, status='green')
+                if self.monitor_store:
+                    self.monitor_store.record_outcome(
+                        SERVICE_FAISS, success=True, detail="faiss insert ok", latency_ms=faiss_latency,
+                    )
             else:
                 self.kb_manager.update_file_status(local_file.file_id, status='yellow')
+                if self.monitor_store:
+                    self.monitor_store.record_outcome(
+                        SERVICE_FAISS, success=False, detail="faiss insert failed", latency_ms=faiss_latency,
+                    )
 
     def deduplicate_documents(self, source_docs):
         unique_docs = set()

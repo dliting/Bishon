@@ -518,6 +518,93 @@ curl -X POST http://localhost:8777/api/local_doc_qa/clean_files_by_status \
 
 ---
 
+## 健康检查
+
+`GET /api/health`
+
+返回系统健康状态，包括各服务可用性和请求队列信息。无需 `user_id`。
+
+### curl 示例
+
+```bash
+curl http://localhost:8777/api/health
+```
+
+### 响应示例
+
+```json
+{
+  "status": "ok",
+  "version": "2.1.0",
+  "uptime_seconds": 3600.5,
+  "services": {
+    "llm": {
+      "status": "healthy",
+      "detail": "ollama qwen3:8b @ http://localhost:11434/v1",
+      "last_check": 1722500000.0,
+      "last_success": 1722500000.0,
+      "latency_ms": 45.2
+    },
+    "embedding": {
+      "status": "healthy",
+      "detail": "qwen3-embedding:0.6b @ http://localhost:11434/v1",
+      "last_check": 1722500000.0,
+      "last_success": 1722500000.0,
+      "latency_ms": 32.1
+    },
+    "rerank": {
+      "status": "disabled",
+      "detail": "disabled (RERANK_ENABLED=false)",
+      "last_check": 1722500000.0,
+      "last_success": null,
+      "latency_ms": 0.0
+    },
+    "ocr": {
+      "status": "healthy",
+      "detail": "PaddleOCR GPU",
+      "last_check": 1722500000.0,
+      "last_success": 1722500000.0,
+      "latency_ms": 0.0
+    },
+    "faiss": {
+      "status": "healthy",
+      "detail": "1024-dim, 3 collection(s)",
+      "last_check": 1722500000.0,
+      "last_success": 1722500000.0,
+      "latency_ms": 0.0
+    },
+    "sqlite": {
+      "status": "healthy",
+      "detail": "/opt/Bishon/V2/dev/BISHON_DB/bishon.db",
+      "last_check": 1722500000.0,
+      "last_success": 1722500000.0,
+      "latency_ms": 0.3
+    }
+  },
+  "queue": {
+    "pending_tasks": 2,
+    "active_tasks": 3,
+    "max_workers": 4
+  }
+}
+```
+
+### 字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `status` | 整体状态：`ok`（所有非禁用服务正常）或 `degraded`（有服务异常） |
+| `version` | 应用版本号 |
+| `uptime_seconds` | 服务运行时长（秒） |
+| `services.*.status` | 服务状态：`healthy` / `unhealthy` / `unknown` / `disabled` |
+| `services.*.detail` | 服务详情描述 |
+| `services.*.latency_ms` | 最近检测延迟（毫秒），0 表示纯状态检查 |
+| `queue.pending_tasks` | 等待执行的请求数 |
+| `queue.active_tasks` | 正在执行的请求数 |
+| `queue.max_workers` | 最大并发工作线程数 |
+
+---
+
 ## API 文档入口
 
 `GET /api/docs`

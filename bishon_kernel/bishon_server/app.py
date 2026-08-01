@@ -1,4 +1,5 @@
 """Bishon V2 — FastAPI main entry point (replaces Sanic)."""
+import asyncio
 import logging
 import os
 import sys
@@ -21,6 +22,13 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from bishon_kernel.bishon_server.handler import _UserIdError, router  # noqa: E402
 from bishon_kernel.core.local_doc_qa import LocalDocQA  # noqa: E402
+from bishon_kernel.monitoring import (  # noqa: E402
+    HealthChecker,
+    ServiceStatusStore,
+    TrackedExecutor,
+)
+
+APP_VERSION = "2.1.0"
 
 # Global instance
 local_doc_qa: LocalDocQA = None
@@ -30,18 +38,40 @@ local_doc_qa: LocalDocQA = None
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager (replaces Sanic's before_server_start)."""
     global local_doc_qa
+
+    # Initialize core QA engine
     local_doc_qa = LocalDocQA()
     local_doc_qa.init_cfg()
     app.state.local_doc_qa = local_doc_qa
+
+    # Initialize monitoring
+    monitor_store = ServiceStatusStore()
+    executor      = TrackedExecutor(max_workers=4)
+    health_checker = HealthChecker(local_doc_qa, monitor_store, executor)
+
+    app.state.monitor_store  = monitor_store
+    app.state.executor       = executor
+    app.state.health_checker = health_checker
+
+    # Share monitor_store with LocalDocQA for record_outcome calls
+    local_doc_qa.monitor_store = monitor_store
+
+    await health_checker.start()
     logging.info("[SUCCESS] Bishon V2 知识库服务初始化完成")
+
     yield
-    # Shutdown: nothing to clean up currently
+
+    # Shutdown
+    await health_checker.stop()
+    health_checker.shutdown()
+    executor.shutdown(wait=True)
+    logging.info("[SHUTDOWN] Bishon V2 服务已停止")
 
 
 app = FastAPI(
     title="Bishon V2",
     description="本地知识库问答系统",
-    version="2.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 

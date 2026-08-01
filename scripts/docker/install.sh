@@ -20,6 +20,7 @@ HOST_DIR=""
 RELEASE_TAR=""
 IMAGE_TAR=""
 MODELS_TAR=""
+NODE_TAR=""
 ACCELERATOR="cuda"
 IMAGE_SOURCE="load"     # load | pull | existing
 IMAGE_REF=""            # used when IMAGE_SOURCE=pull: e.g. bishon-cuda:2.1.0
@@ -37,6 +38,7 @@ while [[ $# -gt 0 ]]; do
         --release)      RELEASE_TAR="$2"; shift 2 ;;
         --image)        IMAGE_TAR="$2";   shift 2 ;;
         --models)       MODELS_TAR="$2";  shift 2 ;;
+        --node)         NODE_TAR="$2";    shift 2 ;;
         --accelerator)  ACCELERATOR="$2"; shift 2 ;;
         --pull)         IMAGE_SOURCE="pull"; shift ;;
         --image-source) IMAGE_SOURCE="$2"; shift 2 ;;
@@ -48,7 +50,7 @@ while [[ $# -gt 0 ]]; do
             cat <<EOF
 Usage: $0 --host-dir <dir> (--image <tar> | --pull | --image-source existing) \
           --release <tar>
-          [--models <tar.gz>] [--accelerator cuda] [--tag <ver>]
+          [--models <tar.gz>] [--node <tar.gz>] [--accelerator cuda] [--tag <ver>]
 
 Note: --release is ALWAYS required for first-time install (the release
 tarball carries the Python env + source code that cannot be obtained from
@@ -66,6 +68,8 @@ When --pull is used:
 Other:
   --host-dir <dir>     Where state lives (must be ext4 / non-9p filesystem).
   --models <tar.gz>    (Optional) Models tarball from make-release.sh.
+  --node <tar.gz>      (Optional) Node toolchain tarball from make-release.sh.
+                       Enables frontend hot-rebuild at container start.
   --accelerator <acc>  cuda (default) | ascend (future).
 EOF
             exit 0 ;;
@@ -86,6 +90,7 @@ die() { bishon_die "$@"; }
 [ -n "$RELEASE_TAR" ] || die "--release required"
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
 [ -z "$MODELS_TAR" ] || [ -f "$MODELS_TAR" ] || die "models tar not found: $MODELS_TAR"
+[ -z "$NODE_TAR"   ] || [ -f "$NODE_TAR"   ] || die "node tar not found: $NODE_TAR"
 
 case "$IMAGE_SOURCE" in
     load)
@@ -188,6 +193,17 @@ rm -rf "$HOST_DIR/python-env" "$HOST_DIR/bishon"
 mv "$TMP/python-env" "$HOST_DIR/python-env"
 mv "$TMP/bishon"     "$HOST_DIR/bishon"
 
+# CRLF guard: if the release tarball was made on Windows or git checked out
+# with CRLF, bishon/docker/*.sh would fail in the container with
+# '/usr/bin/env: bash\r': No such file. Normalize before any docker run.
+if [ -d "$HOST_DIR/bishon/docker" ]; then
+    log "normalizing line endings on bishon/docker/**/*.sh"
+    find "$HOST_DIR/bishon/docker" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
+    chmod +x "$HOST_DIR/bishon/docker/"*.sh 2>/dev/null || true
+    [ -d "$HOST_DIR/bishon/docker/entrypoint_lib" ] && \
+        chmod +x "$HOST_DIR/bishon/docker/entrypoint_lib/"*.sh 2>/dev/null || true
+fi
+
 # --- Models: optional separate tarball or legacy inline path --------------------
 # --models takes priority; if omitted, check the main tarball for a models/ dir
 # (backward compat with older releases that shipped models inline). If neither
@@ -206,6 +222,21 @@ else
     log "no models tarball provided; models/ will be empty."
     log "Install models tarball separately if needed with:"
     log "  tar -xzf bishon-models-${TAG:-unknown}.tar.gz -C $HOST_DIR"
+fi
+
+# --- Node toolchain: optional separate tarball for frontend hot-rebuild -------
+# install.sh --node <tar> extracts bishon-node-<ver>.tar.gz to $HOST_DIR/node-env/.
+# entrypoint.sh then binds it via symlink + PATH. If absent, the container starts
+# normally but skips frontend hot-rebuild (dist must be pre-built by make-release).
+rm -rf "$HOST_DIR/node-env"
+if [ -n "$NODE_TAR" ]; then
+    log "extracting node-env from $NODE_TAR"
+    tar -xzf "$NODE_TAR" -C "$HOST_DIR"
+    [ -d "$HOST_DIR/node-env" ] || die "node tarball did not produce a node-env/ directory"
+    log "node-env installed to $HOST_DIR/node-env"
+elif [ ! -d "$HOST_DIR/node-env" ]; then
+    log "node-env not installed (frontend hot-rebuild disabled at container start)."
+    log "  Install with --node bishon-node-${TAG:-unknown}.tar.gz to enable."
 fi
 
 mkdir -p "$HOST_DIR/scripts"
@@ -236,3 +267,10 @@ Next steps:
   2. Start the service:
        bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
 EOF
+if [ -z "$NODE_TAR" ] && [ ! -d "$HOST_DIR/node-env" ]; then
+    cat <<EOF
+  3. (Optional) Install node-env to enable frontend hot-rebuild at container start:
+       bash $0 --host-dir $HOST_DIR --node bishon-node-${TAG:-unknown}.tar.gz
+     (replaces existing install; preserves .env, BISHON_DB/, logs/)
+EOF
+fi

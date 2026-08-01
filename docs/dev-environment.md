@@ -200,12 +200,33 @@ bash run_all_tests.sh
 # 构建镜像（联网，下载 cuda base + miniconda）
 bash scripts/docker/build-image.sh --version 2.1.0
 
-# 制作离线发布包（含 env、源码、模型、镜像 tar）
+# 制作离线发布包（含 env、源码、模型、镜像 tar、可选 node-env tar）
 bash scripts/docker/make-release.sh --version 2.1.0
 
 # 产物在 dist/
 ls -la dist/
+# 期望看到：bishon-release-2.1.0.tar.gz + bishon-node-2.1.0.tar.gz + ...
 ```
+
+### make-release.sh 的 Node 工具链选项
+
+`make-release.sh` 默认会额外产出 `bishon-node-<ver>.tar.gz`（约 350 MB），里面是 Node 二进制 + Bishon 前端 `node_modules`。部署侧通过 `install.sh --node <tar>` / `upgrade.sh --node <tar>` 解压到 `$HOST_DIR/node-env/`，容器启动 entrypoint 会自动绑定，启用[前端热重构](./deployment.md#前端热重构容器启动按需-npm-run-build)。
+
+环境变量：
+
+| 变量 | 默认 | 用途 |
+|---|---|---|
+| `NODE_VERSION` | `22.7.0` | Node.js 版本。LTS 列表见 https://nodejs.org/en/about/previous-releases |
+| `NODE_MIRROR` | `https://nodejs.org/dist/` | 下载源。国内可设 `https://npmmirror.com/mirrors/node/` 加速 |
+| `NODE_ARCH` | 自动（`uname -m`） | `linux-x64` 或 `linux-arm64` |
+
+跳过 node-env 打包：
+
+```bash
+bash scripts/docker/make-release.sh --version 2.1.0 --skip-node   # 仅源码 + env + models
+```
+
+缓存：Node tarball 缓存在 `dist/.node-cache/`（被 `.gitignore` 覆盖），重复运行不会重下。
 
 ## 常见问题
 

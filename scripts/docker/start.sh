@@ -163,6 +163,11 @@ for i in $(seq 1 90); do
         log ""
         log "  停止: bash $HOST_DIR/scripts/docker/stop.sh --host-dir $HOST_DIR"
         log "  升级: bash $HOST_DIR/scripts/docker/upgrade.sh --host-dir $HOST_DIR --release <new-tar>"
+        if [ -d "$HOST_DIR/node-env" ] && [ ! -f "$HOST_DIR/node-env/.skip-node" ]; then
+            log "  前端热重构: 已启用（改 front_end/src 后重启容器自动 npm run build）"
+        else
+            log "  前端热重构: 未启用（如需改前端，运行 install.sh --node <tar>）"
+        fi
         exit 0
     fi
     sleep 2

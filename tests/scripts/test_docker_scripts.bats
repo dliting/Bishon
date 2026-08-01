@@ -178,3 +178,81 @@ EOF
     [[ "$output" == *"release/MANIFEST"* ]]
     rm -rf "$tmp_repo"
 }
+
+# ---------------------------------------------------------------------------
+# Node toolchain + frontend hot-rebuild (v2.2+)
+# ---------------------------------------------------------------------------
+
+@test "launcher.sh exists in source tree" {
+    [ -f "$REPO_ROOT/docker/launcher.sh" ]
+    grep -q '^exec "\$REAL"' "$REPO_ROOT/docker/launcher.sh"
+}
+
+@test "Dockerfile.cuda uses /launcher.sh not /entrypoint.sh" {
+    grep -q "COPY launcher.sh /launcher.sh" "$REPO_ROOT/docker/Dockerfile.cuda"
+    grep -q 'ENTRYPOINT.*/launcher.sh' "$REPO_ROOT/docker/Dockerfile.cuda"
+    ! grep -q "COPY entrypoint.sh /entrypoint.sh" "$REPO_ROOT/docker/Dockerfile.cuda"
+}
+
+@test "launcher.sh references bind-mounted entrypoint" {
+    grep -q "/opt/bishon-data/bishon/docker/entrypoint.sh" "$REPO_ROOT/docker/launcher.sh"
+}
+
+@test "entrypoint.sh sources all 4 lib modules" {
+    grep -q 'LIB_DIR=.*entrypoint_lib'                       "$REPO_ROOT/docker/entrypoint.sh"
+    grep -q '"\$LIB_DIR/bind_python_env.sh"'                 "$REPO_ROOT/docker/entrypoint.sh"
+    grep -q '"\$LIB_DIR/redirect_runtime_dirs.sh"'           "$REPO_ROOT/docker/entrypoint.sh"
+    grep -q '"\$LIB_DIR/bind_node_env.sh"'                   "$REPO_ROOT/docker/entrypoint.sh"
+    grep -q '"\$LIB_DIR/frontend_rebuild.sh"'                "$REPO_ROOT/docker/entrypoint.sh"
+}
+
+@test "make-release.sh accepts --skip-node flag" {
+    grep -q -- "--skip-node)" "$REPO_ROOT/scripts/docker/make-release.sh"
+}
+
+@test "make-release.sh has step 3c (node-env staging)" {
+    grep -qE "3c\. Node|NODE_TGZ=|node-env.*bishon-node" "$REPO_ROOT/scripts/docker/make-release.sh"
+}
+
+@test "install.sh accepts --node flag" {
+    grep -q -- "--node)" "$REPO_ROOT/scripts/docker/install.sh"
+}
+
+@test "upgrade.sh accepts --node flag" {
+    grep -q -- "--node)" "$REPO_ROOT/scripts/docker/upgrade.sh"
+}
+
+@test "frontend_needs_rebuild returns 0 (true) when dist missing" {
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/src"
+    echo "x" > "$tmp/src/x.vue"
+    DATA_ROOT="$tmp"
+    FRONTEND_SRC_DIR="$tmp/src"
+    FRONTEND_ROOT="$tmp"
+    DIST_INDEX="$tmp/dist/index.html"
+    # frontend_rebuild.sh references log() / die() — provide minimal stubs.
+    log() { :; }
+    die() { return 1; }
+    source "$REPO_ROOT/docker/entrypoint_lib/frontend_rebuild.sh"
+    run frontend_needs_rebuild
+    [ "$status" -eq 0 ]
+    rm -rf "$tmp"
+}
+
+@test "frontend_needs_rebuild returns 1 (false) when dist newer than source" {
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/src" "$tmp/dist"
+    echo "x" > "$tmp/src/x.vue"
+    touch -d "1 hour ago" "$tmp/src/x.vue"
+    echo "y" > "$tmp/dist/index.html"
+    DATA_ROOT="$tmp"
+    FRONTEND_SRC_DIR="$tmp/src"
+    FRONTEND_ROOT="$tmp"
+    DIST_INDEX="$tmp/dist/index.html"
+    log() { :; }
+    die() { return 1; }
+    source "$REPO_ROOT/docker/entrypoint_lib/frontend_rebuild.sh"
+    run frontend_needs_rebuild
+    [ "$status" -eq 1 ]
+    rm -rf "$tmp"
+}

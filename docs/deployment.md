@@ -97,6 +97,7 @@ ls dist/
 | **启动** | `<dir>/scripts/docker/start.sh --host-dir <dir>` | 同左 | `start-bare-metal.sh` |
 | **停止** | `<dir>/scripts/docker/stop.sh --host-dir <dir>` | 同左 | `stop-bare-metal.sh` |
 | **升级** | `<dir>/scripts/docker/upgrade.sh --host-dir <dir> --release <tar>` | 同左 | `git pull && pip install -r requirements.txt` |
+| **升级 Node** | `<dir>/scripts/docker/upgrade.sh --host-dir <dir> --node <tar>` | 同左 | n/a |
 | **卸载** | `<dir>/scripts/docker/uninstall.sh --host-dir <dir>` | 同左 | `rm -rf <dir>` |
 | **日志** | `tail -f <dir>/logs/debug_logs/debug.log` | 同左 | `tail -f logs/debug_logs/debug.log` |
 
@@ -263,8 +264,11 @@ bash install.sh \
     --host-dir /var/lib/bishon \
     --release /path/to/bishon-release-2.1.0.tar.gz \
     --image   /path/to/bishon-cuda-image-2.1.0.tar \
+    --node    /path/to/bishon-node-2.1.0.tar.gz \
     --accelerator cuda
 ```
+
+`--node` 是**可选**的：传了就会装上 Node 工具链（`$HOST_DIR/node-env/`），启用[前端热重构](#前端热重构容器启动按需-npm-run-build)。不传也能用——前端 `dist/` 在发布包里已经预构建好，容器启动直接静态托管。
 
 `install.sh` 干这些事：
 
@@ -326,6 +330,55 @@ bash /var/lib/bishon/scripts/upgrade.sh --host-dir /var/lib/bishon --release bis
 bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
 bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
+
+### 升级 Node 工具链 / 启用前端热重构
+
+`make-release.sh` 默认额外产出 `bishon-node-<ver>.tar.gz`（Node 二进制 + Bishon 前端 `node_modules`，约 350 MB）。首次安装时通过 `install.sh --node <tar>` 启用；之后单独升级 Node 或 npm 包只需：
+
+```bash
+bash /var/lib/bishon/scripts/upgrade.sh \
+    --host-dir /var/lib/bishon \
+    --release  /path/to/bishon-release-2.2.0.tar.gz \
+    --node     /path/to/bishon-node-2.2.0.tar.gz
+
+bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
+```
+
+`upgrade.sh --node` 原子替换 `$HOST_DIR/node-env/`，**不动镜像、不动 bishon 源码**。容器重启后 entrypoint 会自动重新绑定 Node 工具链。
+
+## 前端热重构（容器启动按需 `npm run build`）
+
+启用后（`install.sh --node` 或 `upgrade.sh --node`），容器每次启动 entrypoint 会比较 `front_end/src/*.{vue,ts,scss,css,json}` 与 `dist/bishon/index.html` 的 mtime。源较新就自动 `npm run build` 重建 dist。
+
+典型工作流——改完前端代码后：
+
+```bash
+# 1. 编辑 front_end/src/components/Chat.vue（在 host-dir 上直接改）
+vim /var/lib/bishon/bishon/front_end/src/components/Chat.vue
+
+# 2. 重启容器，entrypoint 自动 rebuild
+bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
+
+# 3. 看 npm 输出（如果触发了 rebuild）
+docker logs bishon 2>&1 | grep '\[npm\]'
+```
+
+启动日志会出现下面之一：
+
+- `[entrypoint] frontend source newer than dist → running npm run build` + `[entrypoint] frontend dist rebuilt` —— 触发了重构
+- `[entrypoint] frontend dist up-to-date, skipping rebuild` —— dist 比 src 新，跳过
+
+构建失败（`npm run build` 返回非零）会让 entrypoint 退出非零，容器进入 CrashLoop。`docker logs bishon` 看完整 `[npm]` 前缀输出定位错误。
+
+### Node 工具链不进镜像的设计
+
+镜像里**没有** Node/npm——只有 ~10 行的 `/launcher.sh` stub。真正的 entrypoint 逻辑住在 `$HOST_DIR/bishon/docker/entrypoint.sh`（含 4 个 `entrypoint_lib/` 子模块），通过 bind mount 进入容器。这意味着：
+
+- 改前端构建逻辑 / Node 绑定 / mtime 比较 → `upgrade.sh --release <new>` 即可，**不需要重打镜像**
+- 升级 Node 版本或 npm 包 → `upgrade.sh --node <new>`，**不需要重打镜像**
+- 唯一需要重打镜像的场景：改 `docker/launcher.sh` 本身（设计上永久不变）
 
 ## 部署机：卸载
 

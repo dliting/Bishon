@@ -26,6 +26,7 @@ SKIP_ENV=false
 SKIP_MODELS=false
 SKIP_IMAGE=false
 SKIP_FRONTEND=false
+SKIP_NODE=false
 FORCE_FRONTEND=false
 FORCE=false
 while [[ $# -gt 0 ]]; do
@@ -38,6 +39,7 @@ while [[ $# -gt 0 ]]; do
         --skip-models)    SKIP_MODELS=true;    shift ;;
         --skip-image)     SKIP_IMAGE=true;     shift ;;
         --skip-frontend)  SKIP_FRONTEND=true;  shift ;;
+        --skip-node)      SKIP_NODE=true;      shift ;;
         --force-frontend) FORCE_FRONTEND=true; shift ;;
         -h|--help)
             cat <<EOF
@@ -54,7 +56,14 @@ COMPONENT SELECTION (all included by default)
   --skip-models        Skip models (Qwen3-Reranker + PaddleOCR ~2.5 GB).
   --skip-image         Skip the docker image tar (~3 GB).
   --skip-frontend      Skip the frontend build (use if dist is already built).
+  --skip-node          Skip the node-env tarball (Node binary + node_modules, ~350 MB).
   --force-frontend     Rebuild frontend even if dist already exists.
+
+ENVIRONMENT
+  NODE_VERSION         Node.js version to download (default: 22.7.0 LTS).
+  NODE_MIRROR          Download mirror (default: https://nodejs.org/dist/).
+                       China-friendly: https://npmmirror.com/mirrors/node/
+  NODE_ARCH            linux-x64 or linux-arm64 (default: auto from uname -m).
 
 EXISTING RELEASE DIR
   --force              Overwrite existing files in release-<ver>/ dir.
@@ -66,8 +75,9 @@ EXISTING RELEASE DIR
 Outputs (under --output-dir / default dist/):
   bishon-release-<ver>.tar.gz        source + env + models + scripts
   bishon-models-<ver>.tar.gz         models only (for install/upgrade reuse)
+  bishon-node-<ver>.tar.gz           Node binary + node_modules (optional)
   bishon-cuda-image-<ver>.tar        docker save tarball
-  bishon-release-<ver>.tar.gz.sha256 checksum file
+  *.sha256                           matching checksum files
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -88,8 +98,14 @@ mkdir -p "$OUTPUT_DIR"
 DIST="$OUTPUT_DIR/release-$VERSION"
 DIST_TGZ="$DIST/bishon-release-$VERSION.tar.gz"
 MODELS_TGZ="$DIST/bishon-models-$VERSION.tar.gz"
+NODE_TGZ="$DIST/bishon-node-$VERSION.tar.gz"
 IMAGE_TAR="$DIST/bishon-cuda-image-$VERSION.tar"
 IMAGE_TAG="bishon-cuda:$VERSION"
+
+# Node toolchain selection (env vars overridable).
+NODE_VERSION="${NODE_VERSION:-22.7.0}"
+NODE_MIRROR="${NODE_MIRROR:-https://nodejs.org/dist/}"
+NODE_ARCH="${NODE_ARCH:-$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')}"
 
 export BISHON_LOG_TAG=release
 # shellcheck source=../common/utils.sh
@@ -222,6 +238,51 @@ else
     build_frontend
 fi
 
+# --- 3c. Node toolchain (separate tarball) -----------------------------------
+# Output bishon-node-<ver>.tar.gz: Node.js binary + Bishon frontend node_modules.
+# install.sh --node <tar> extracts to $HOST_DIR/node-env/. entrypoint binds it.
+if $SKIP_NODE; then
+    log "skipping node-env (--skip-node)"
+    mkdir -p "$DIST/node-env"
+    echo "source-only release; node-env not included" > "$DIST/node-env/.skip-node"
+else
+    log "staging node-env (Node v$NODE_VERSION, arch $NODE_ARCH)"
+    mkdir -p "$DIST/node-env"
+
+    # 3c.1 Download Node.js linux-$NODE_ARCH tarball (cached at dist/.node-cache/)
+    CACHE_DIR="$REPO_ROOT/dist/.node-cache"
+    NODE_TARBALL="$CACHE_DIR/node-v$NODE_VERSION-linux-$NODE_ARCH.tar.gz"
+    if [ ! -f "$NODE_TARBALL" ]; then
+        mkdir -p "$CACHE_DIR"
+        URL="${NODE_MIRROR}v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.gz"
+        log "downloading $URL"
+        if ! curl -fL --retry 3 --connect-timeout 30 -o "$NODE_TARBALL.tmp" "$URL"; then
+            die "Node download failed. Try NODE_MIRROR=https://npmmirror.com/mirrors/node/ or pass --skip-node."
+        fi
+        mv "$NODE_TARBALL.tmp" "$NODE_TARBALL"
+    else
+        log "using cached $NODE_TARBALL"
+    fi
+    tar -xzf "$NODE_TARBALL" -C "$DIST/node-env/"
+
+    # 3c.2 Copy node_modules (build host's front_end/node_modules/ is prepared by step 3b npm ci).
+    if [ ! -d "$REPO_ROOT/front_end/node_modules" ]; then
+        die "front_end/node_modules missing on build host. Run 'cd front_end && npm ci --legacy-peer-deps' first, or pass --skip-frontend + --skip-node for source-only release."
+    fi
+    log "copying node_modules (~$(du -sh "$REPO_ROOT/front_end/node_modules" 2>/dev/null | cut -f1 || echo '?'))"
+    # Exclude .cache (vite/webpack intermediate); everything else stays.
+    rsync -a --exclude '.cache' "$REPO_ROOT/front_end/node_modules/" "$DIST/node-env/node_modules/"
+
+    # 3c.3 Version stamp for deploy-side quick identification.
+    echo "node-v$NODE_VERSION-linux-$NODE_ARCH" > "$DIST/node-env/.node-version"
+
+    # 3c.4 Tarball + sha256.
+    log "creating $NODE_TGZ"
+    (cd "$DIST" && tar -czf "$NODE_TGZ.tmp" node-env && mv "$NODE_TGZ.tmp" "$NODE_TGZ")
+    (cd "$DIST" && sha256sum "$(basename "$NODE_TGZ")" > "$(basename "$NODE_TGZ").sha256")
+    log "node-env tarball: $(du -sh "$NODE_TGZ" | cut -f1)"
+fi
+
 # --- 4. Models — separate tarball (not in main release) ----------------------
 # Models (~2.5 GB) change infrequently; shipping them in the main tarball
 # forces every deploy to download them. Instead, produce a standalone
@@ -288,6 +349,10 @@ log "  $DIST_TGZ.sha256"
 if ! $SKIP_MODELS; then
     log "  $MODELS_TGZ     ($(du -h "$MODELS_TGZ" | cut -f1))"
     log "  $MODELS_TGZ.sha256"
+fi
+if ! $SKIP_NODE && [ -f "$NODE_TGZ" ]; then
+    log "  $NODE_TGZ       ($(du -h "$NODE_TGZ" | cut -f1))"
+    log "  $NODE_TGZ.sha256"
 fi
 if ! $SKIP_IMAGE; then
     log "  $IMAGE_TAR      ($(du -h "$IMAGE_TAR" | cut -f1))"

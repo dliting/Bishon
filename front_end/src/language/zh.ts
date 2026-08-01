@@ -47,6 +47,7 @@ export default {
     dataSource: '数据来源',
     correlation: '相关性:',
     chunkCount: '个段落',
+    chunkLabel: '段落',
     copySuccess: '拷贝成功',
     copyFailed: '拷贝失败',
     copied: '拷贝过',

@@ -14,7 +14,7 @@
                 <p
                   class="question-text"
                   :class="[
-                    !item.source.length ? 'change-radius' : '',
+                    !item.groupedSource?.length ? 'change-radius' : '',
                     item.showTools ? '' : 'flashing',
                   ]"
                   v-html="item.answer"
@@ -53,7 +53,7 @@
                         class="chunk-item"
                       >
                         <p v-if="group.chunks.length > 1" class="chunk-label">
-                          chunk{{ chunkIdx + 1 }}
+                          {{ common.chunkLabel }}{{ chunkIdx + 1 }}
                         </p>
                         <p v-html="chunk.content?.replaceAll('\n', '<br/>') || ''"></p>
                         <p class="score">
@@ -246,6 +246,7 @@ const addAnswer = (question: string) => {
     like: false,
     unlike: false,
     source: [],
+    groupedSource: [],
     showTools: false,
   });
 };
@@ -368,14 +369,17 @@ const reAnswer = (item: IChatItem) => {
 const groupSources = (sources: IDataSourceItem[]): IGroupedSource[] => {
   const groups: IGroupedSource[] = [];
   const seen = new Map<string, number>();
-  for (const src of sources) {
-    const key = src.file_name || '';
+  for (let i = 0; i < sources.length; i++) {
+    const src = sources[i];
+    // Use file_name as key; fall back to unique index so unnamed sources
+    // are never merged into a single invisible group.
+    const key = src.file_name || `__unnamed_${i}__`;
     if (seen.has(key)) {
       groups[seen.get(key)!].chunks.push(src);
     } else {
       seen.set(key, groups.length);
       groups.push({
-        file_name: key,
+        file_name: src.file_name || '',
         file_id: src.file_id,
         chunks: [src],
       });
@@ -383,6 +387,13 @@ const groupSources = (sources: IDataSourceItem[]): IGroupedSource[] => {
   }
   return groups;
 };
+
+// Backfill groupedSource for items restored from localStorage (pre-migration).
+for (const item of QA_List.value) {
+  if (item.source?.length && !item.groupedSource?.length) {
+    item.groupedSource = groupSources(item.source);
+  }
+}
 
 // Expand/collapse state keyed by "itemIndex-groupIndex".
 // Separated from data model so it's naturally reactive and not persisted.
@@ -490,6 +501,7 @@ scrollBottom();
   max-width: 1239px;
   height: calc(100vh - 54px - 48px - 28px - 28px - 32px - 50px);
   overflow-y: auto;
+  scrollbar-color: #c1c1c1 transparent;
   padding-top: 28px;
 
   #chat-ul {

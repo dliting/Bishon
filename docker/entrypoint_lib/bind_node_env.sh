@@ -13,8 +13,15 @@ bind_node_env() {
         return 0
     fi
 
-    local node_bin_dir
-    node_bin_dir=$(ls -d "$node_env"/node-v*-linux-x64 "$node_env"/node-v*-linux-arm64 2>/dev/null | head -1)
+    # Find Node binary dir. Avoid `ls -d pattern1 pattern2` — if only one
+    # pattern matches, ls exits 2 and `set -e + pipefail` aborts silently.
+    local node_bin_dir=""
+    local candidate
+    for candidate in "$node_env"/node-v*-linux-x64 "$node_env"/node-v*-linux-arm64; do
+        [ -d "$candidate" ] || continue
+        node_bin_dir="$candidate"
+        break
+    done
     [ -n "$node_bin_dir" ] || die "$node_env/ present but no node-v*-linux-{x64,arm64}/ subdir found."
 
     [ -x "$node_bin_dir/bin/node" ] && [ -x "$node_bin_dir/bin/npm" ] \

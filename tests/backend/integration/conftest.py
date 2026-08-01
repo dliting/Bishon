@@ -1,10 +1,36 @@
 """API integration test fixtures."""
 import os
+import time
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
 from httpx import ASGITransport
+
+
+def _drain_background_executor(timeout: float = 5.0) -> None:
+    """Block until handler._executor finishes all queued tasks.
+
+    handler.upload_files / upload_weblink submit `_safe_insert` to a module-level
+    ThreadPoolExecutor (`_executor`) and return immediately. If pytest's
+    `tmp_path` cleanup runs first, the bg thread later tries to UPDATE File on
+    a DB file that's already been deleted → SQLite auto-creates an empty file
+    → "no such table: File" error in teardown.
+
+    Submitting a sentinel task and waiting on its Future guarantees FIFO
+    completion of all previously-queued tasks before we let pytest clean up.
+    """
+    try:
+        from bishon_kernel.bishon_server.handler import _executor
+    except Exception:
+        return  # handler not imported yet — nothing to drain
+    try:
+        future = _executor.submit(lambda: None)
+    except RuntimeError:
+        return  # executor already shut down
+    deadline = time.monotonic() + timeout
+    while not future.done() and time.monotonic() < deadline:
+        time.sleep(0.02)
 
 
 @pytest.fixture
@@ -63,4 +89,9 @@ async def api_client(tmp_path, monkeypatch):
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     finally:
+        # Wait for any background _safe_insert tasks (queued by upload_files
+        # / upload_weblink) to finish before monkeypatch.undo() resets DB_PATH
+        # and tmp_path is deleted. Otherwise the bg thread reads a stale
+        # DB_PATH and SQLite recreates an empty file → "no such table: File".
+        _drain_background_executor()
         app.state.local_doc_qa = original_local_doc_qa

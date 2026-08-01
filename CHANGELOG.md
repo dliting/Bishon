@@ -9,6 +9,10 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+### ⚠️ Upgrade Notice (v2.1 → v2.2)
+- **One-time image rebuild required** to gain the entrypoint bind-mount capability (launcher pattern). Old v2.1 image still works with v2.2 release bundles but loses the ability to upgrade entrypoint logic without rebuilding the image. Run `bash scripts/docker/build-image.sh --version <new-ver>` once, then `docker save` and ship via `install.sh`/`upgrade.sh` as usual.
+- After this one-time rebuild, **all subsequent entrypoint changes ship via release tarball only** — no more image rebuilds for entrypoint/Node/frontend-rebuild logic changes.
+
 ### Added
 - **Root `deploy.sh` — 4-step interactive wizard entry point.** Single command (`bash deploy.sh`) covers three modes: `docker-online` (pull from ghcr.io or Aliyun), `docker-offline` (load local tar), `bare-metal` (no Docker). `--non-interactive` + flag-per-question for CI/batch deploy; `--dry-run` walks through everything without executing. Detects native Windows and suggests WSL2. Bundle-aware: detects `bishon-release-*.tar.gz` next to the script and adapts defaults. Persists choices to `<host-dir>/deploy.conf` for next-run defaults (skipped under `--dry-run`).
 - **`scripts/common/wizard.sh`** — interactive gather module sourced by root `deploy.sh`. Implements 4-step numbered flow (mode → inputs → outputs → confirm) and the `ask` / `ask_required` / `ask_path` / `ask_choice` / `glob_bundle` helpers. No dispatch logic — wizard.sh only sets variables; deploy.sh dispatches directly to L1 install/start scripts.

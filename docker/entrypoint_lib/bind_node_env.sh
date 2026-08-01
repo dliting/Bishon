@@ -60,5 +60,8 @@ bind_node_env() {
     fi
 
     log "Node $(node --version) bound at $node_bin_dir, npm $(npm --version)"
+    if [ -f "$node_env/.node-version" ]; then
+        log "node-env version stamp: $(cat "$node_env/.node-version")"
+    fi
     NODE_BOUND=true
 }

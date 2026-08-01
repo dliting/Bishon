@@ -12,6 +12,10 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+### ⚠️ 升级须知（v2.1 → v2.2）
+- **一次性镜像重打**才能用上 entrypoint bind-mount 能力（launcher 模式）。旧 v2.1 镜像仍可与 v2.2 release 包配合使用，但失去"升级 entrypoint 逻辑不必重打镜像"的能力。运行一次 `bash scripts/docker/build-image.sh --version <新版本>`，然后 `docker save` 后照常走 `install.sh` / `upgrade.sh` 流程。
+- 一次性重打后，**之后所有 entrypoint 改动都走 release tarball 分发**——entrypoint / Node / 前端重构逻辑的升级都不再需要重打镜像。
+
 ### 新增
 - **根目录 `deploy.sh` —— 4 步交互式部署入口**。一条命令（`bash deploy.sh`）覆盖三种模式：`docker-online`（从 ghcr.io / 阿里云拉镜像）、`docker-offline`（从本地 tar 加载镜像）、`bare-metal`（无 Docker）。`--non-interactive` + 每个问题对应一个 flag，方便 CI/批量部署；`--dry-run` 走完所有步骤但不实际执行。检测到原生 Windows 会建议改用 WSL2。Bundle 自感知：自动识别脚本旁的 `bishon-release-*.tar.gz` 并据此调整默认值。把选择持久化到 `<host-dir>/deploy.conf`，下次运行作为默认（`--dry-run` 时跳过）。
 - **`scripts/common/wizard.sh`** —— 交互式参数收集模块，被根 `deploy.sh` source 执行。实现 4 步带序号的流程（模式 → 输入 → 输出 → 确认），以及 `ask` / `ask_required` / `ask_path` / `ask_choice` / `glob_bundle` 等辅助函数。本身不做分发，只设置变量；分发逻辑在 deploy.sh 里直接调 L1 install/start 脚本。

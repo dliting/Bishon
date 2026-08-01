@@ -16,10 +16,11 @@ set -euo pipefail
 frontend_needs_rebuild() {
     [ -f "$DIST_INDEX" ] || return 0   # no dist → must build
 
-    local dist_mtime newest=0 m f
+    local dist_mtime newest=0 m f src_seen=false
     dist_mtime=$(stat -c %Y "$DIST_INDEX" 2>/dev/null || echo 0)
 
     while IFS= read -r f; do
+        src_seen=true
         m=$(stat -c %Y "$f" 2>/dev/null || echo 0)
         [ "$m" -gt "$newest" ] && newest=$m
     done < <(find "$FRONTEND_SRC_DIR" -type f \
@@ -32,6 +33,11 @@ frontend_needs_rebuild() {
         m=$(stat -c %Y "$cfg" 2>/dev/null || echo 0)
         [ "$m" -gt "$newest" ] && newest=$m
     done
+
+    if [ "$src_seen" = "false" ]; then
+        log "WARN: no source files matched under $FRONTEND_SRC_DIR (frontend_needs_rebuild assumes dist is current)"
+        return 1
+    fi
 
     [ "$newest" -gt "$dist_mtime" ]
 }

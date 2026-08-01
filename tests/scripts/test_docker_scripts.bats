@@ -256,3 +256,37 @@ EOF
     [ "$status" -eq 1 ]
     rm -rf "$tmp"
 }
+
+@test "frontend_needs_rebuild returns 0 (true) when source newer than dist" {
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/src" "$tmp/dist"
+    echo "old" > "$tmp/dist/index.html"
+    touch -d "1 hour ago" "$tmp/dist/index.html"
+    echo "newer" > "$tmp/src/Chat.vue"   # mtime = now > dist
+    DATA_ROOT="$tmp"
+    FRONTEND_SRC_DIR="$tmp/src"
+    FRONTEND_ROOT="$tmp"
+    DIST_INDEX="$tmp/dist/index.html"
+    log() { :; }
+    die() { return 1; }
+    source "$REPO_ROOT/docker/entrypoint_lib/frontend_rebuild.sh"
+    run frontend_needs_rebuild
+    [ "$status" -eq 0 ]
+    rm -rf "$tmp"
+}
+
+@test "frontend_needs_rebuild returns 1 (false) when src dir missing entirely" {
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/dist"
+    echo "y" > "$tmp/dist/index.html"
+    DATA_ROOT="$tmp"
+    FRONTEND_SRC_DIR="$tmp/does-not-exist"   # find will produce nothing
+    FRONTEND_ROOT="$tmp"
+    DIST_INDEX="$tmp/dist/index.html"
+    log() { :; }
+    die() { return 1; }
+    source "$REPO_ROOT/docker/entrypoint_lib/frontend_rebuild.sh"
+    run frontend_needs_rebuild
+    [ "$status" -eq 1 ]   # WARN path: no src files → assume dist current
+    rm -rf "$tmp"
+}

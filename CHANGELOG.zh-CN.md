@@ -12,6 +12,8 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-02
+
 ### ⚠️ 升级须知（v2.1 → v2.2）
 - **一次性镜像重打**才能用上 entrypoint bind-mount 能力（launcher 模式）。旧 v2.1 镜像仍可与 v2.2 release 包配合使用，但失去"升级 entrypoint 逻辑不必重打镜像"的能力。运行一次 `bash scripts/docker/build-image.sh --version <新版本>`，然后 `docker save` 后照常走 `install.sh` / `upgrade.sh` 流程。
 - 一次性重打后，**之后所有 entrypoint 改动都走 release tarball 分发**——entrypoint / Node / 前端重构逻辑的升级都不再需要重打镜像。
@@ -157,6 +159,7 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - 进程内 PaddleOCR 3.x 替代 OCR 微服务。
 - FastAPI + uvicorn 替代 Sanic。
 
-[Unreleased]: https://github.com/dliting/Bishon/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/dliting/Bishon/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/dliting/Bishon/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dliting/Bishon/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dliting/Bishon/releases/tag/v2.0.0

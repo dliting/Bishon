@@ -9,6 +9,8 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-02
+
 ### ⚠️ Upgrade Notice (v2.1 → v2.2)
 - **One-time image rebuild required** to gain the entrypoint bind-mount capability (launcher pattern). Old v2.1 image still works with v2.2 release bundles but loses the ability to upgrade entrypoint logic without rebuilding the image. Run `bash scripts/docker/build-image.sh --version <new-ver>` once, then `docker save` and ship via `install.sh`/`upgrade.sh` as usual.
 - After this one-time rebuild, **all subsequent entrypoint changes ship via release tarball only** — no more image rebuilds for entrypoint/Node/frontend-rebuild logic changes.
@@ -154,6 +156,7 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - In-process PaddleOCR 3.x instead of OCR microservice.
 - FastAPI + uvicorn instead of Sanic.
 
-[Unreleased]: https://github.com/dliting/Bishon/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/dliting/Bishon/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/dliting/Bishon/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dliting/Bishon/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dliting/Bishon/releases/tag/v2.0.0

@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+English | [简体中文](CHANGELOG.zh-CN.md)
+
 ## [Unreleased]
 
 ### Added
@@ -20,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`make-release.sh --skip-env --skip-models --skip-image`**: when all three skips are passed, produces a tiny source-only tarball in ~5s for quick publish testing. Useful for iterating on bundle layout without waiting on the 12 GB env/models/image copy.
 - **SHA256 checksums**: every tarball now ships with a matching `.sha256` file for deploy-side integrity verification.
 - **`bishon-cuda:latest` tag**: `build-image.sh` now also tags the image as `latest` for CI/automation convenience.
+- **GPU smoke test (`tests/backend/integration/test_gpu_smoke.py`)** — 5 cases that verify torch + FAISS + Qwen3-Reranker all see the GPU after install. Skipped automatically on CPU-only hosts. Catches the torch+cu130 vs driver-CUDA-12.6 mismatch that previously left GPU silently unused.
+- **`faiss-gpu-cu12` wheels supported** — `requirements.txt` now documents the GPU path (`pip install faiss-gpu-cu12` after uninstalling `faiss-cpu`) instead of saying "GPU 版本需通过 conda 安装".
+
+### Fixed
+- **Test isolation: background `_safe_insert` no longer leaks past fixture teardown.** `tests/backend/integration/conftest.py::api_client` now drains `handler._executor` before `tmp_path` cleanup — previously, a queued `_safe_insert` would race with pytest's tmp_path deletion and trigger `sqlite3.OperationalError: no such table: File` when SQLite re-created an empty DB file. Suite went from `1 error` to `0 errors` (244 passed).
 
 ### Changed
 - **Restructured `scripts/` into a three-layer layout**: `scripts/common/` (shared utilities — `utils.sh`, `wizard.sh`, `preflight.sh`, `validate-manifest.sh`, `download-models.sh`), `scripts/docker/` (Docker-only — `install.sh`, `start.sh`, `stop.sh`, `upgrade.sh`, `uninstall.sh`, `build-image.sh`, `publish-image.sh`, `make-release.sh`), `scripts/bare-metal/` (bare-metal-only — `start.sh`, `stop.sh`). Replaces the old `scripts/docker/lib/` shared-helper layout. No backwards compatibility — existing v2.1.x deployments must re-clone or update their scripts path.

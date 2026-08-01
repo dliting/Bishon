@@ -5,7 +5,9 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 
-# 向量存储 (GPU 版本需通过 conda 安装 faiss 的 CUDA 构建)
+# 向量存储
+# - 默认装 CPU 版（小）。要 GPU 加速：pip uninstall faiss-cpu &&
+#   pip install faiss-gpu-cu12  （需匹配 torch 的 CUDA 次版本，cu12 系均可）
 faiss-cpu>=1.7.4
 
 # HTTP 客户端（用于 Embedding/LLM API 调用）
@@ -36,6 +38,10 @@ paddleocr>=3.0
 
 # Rerank 模型（进程内加载，Qwen3-Reranker-0.6B）
 transformers>=4.51
+# torch：默认 PyPI 拉到的是最新 CUDA 13 wheel。WSL + Windows driver ≤ 561.x
+# 只支持 CUDA 12.6。手动指定 cu126 wheel：
+#   pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.12.0
+# 验证：python -c "import torch; print(torch.cuda.is_available())"
 torch>=2.0
 
 # 通用工具

@@ -101,6 +101,12 @@ class LocalDocQA:
                         logging.warning("[OCR] GPU requested but paddle lacks CUDA — falling back to CPU")
                         use_gpu = False
 
+                ocr_kwargs = {}
+                if not use_gpu:
+                    # paddle >=3.3 CPU builds crash in the oneDNN/PIR executor
+                    # ("ConvertPirAttribute2RuntimeAttribute not support") on
+                    # every inference; run pure-paddle kernels instead.
+                    ocr_kwargs["enable_mkldnn"] = False
                 self.ocr_engine = PaddleOCR(
                     text_detection_model_dir       = det_dir,
                     text_recognition_model_dir     = rec_dir,
@@ -108,6 +114,7 @@ class LocalDocQA:
                     doc_orientation_classify_model_dir = doc_ori_dir,
                     use_doc_orientation_classify   = True,
                     use_doc_unwarping              = False,
+                    **ocr_kwargs,
                 )
                 logging.info("[OCR] PaddleOCR initialized, model_dir=%s, gpu=%s", ocr_model_dir, use_gpu)
             except Exception as e:

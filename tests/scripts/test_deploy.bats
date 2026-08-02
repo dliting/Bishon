@@ -101,6 +101,13 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
     [ "$status" -eq 0 ]
 }
 
+@test "bare-metal start.sh supports --daemon" {
+    run bash -n "$REPO_ROOT/scripts/bare-metal/start.sh"
+    [ "$status" -eq 0 ]
+    grep -q -- "--daemon)" "$REPO_ROOT/scripts/bare-metal/start.sh"
+    grep -q "setsid nohup" "$REPO_ROOT/scripts/bare-metal/start.sh"
+}
+
 # ---------------------------------------------------------------------------
 # Platform detection
 # ---------------------------------------------------------------------------

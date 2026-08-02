@@ -32,5 +32,11 @@ def can_use_torch_gpu():
 
 
 def can_use_ocr_gpu():
-    """True when config permits OCR GPU. PaddleOCR detects GPU availability itself."""
-    return _config_allows("OCR_USE_GPU")
+    """True when config permits OCR GPU AND paddle is compiled with CUDA."""
+    if not _config_allows("OCR_USE_GPU"):
+        return False
+    try:
+        import paddle
+        return paddle.device.is_compiled_with_cuda()
+    except ImportError:
+        return False

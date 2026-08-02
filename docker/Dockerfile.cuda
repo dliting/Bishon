@@ -9,7 +9,12 @@
 #   - Timezone is Asia/Shanghai (avoids container UTC vs business local-time skew).
 #   - HEALTHCHECK uses the in-process /api/health endpoint.
 
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+# Base MUST match the torch/paddle CUDA wheel in the env:
+#   - torch 2.12+cu126 + paddlepaddle-gpu cu126 → CUDA 12.6 runtime
+#   - Older 12.1 base caused silent GPU regression: torch.cuda.is_available()=False
+#     with "Error 500: named symbol not found" (torch needs 12.6 cudart symbols).
+# When upgrading torch/paddle CUDA wheel, bump this base tag to match.
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \

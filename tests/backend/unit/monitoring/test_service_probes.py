@@ -10,6 +10,7 @@ from bishon_kernel.monitoring.service_probes import (
     ALL_PROBES,
     probe_embedding,
     probe_faiss,
+    probe_gpu,
     probe_llm,
     probe_ocr,
     probe_rerank,
@@ -229,9 +230,132 @@ class TestProbeSqlite:
 
 class TestAllProbesRegistry:
     def test_all_services_have_probes(self):
-        expected = {"llm", "embedding", "rerank", "ocr", "faiss", "sqlite"}
+        expected = {"llm", "embedding", "rerank", "ocr", "faiss", "sqlite", "gpu"}
         assert set(ALL_PROBES.keys()) == expected
 
     def test_all_probes_are_callable(self):
         for name, probe_fn in ALL_PROBES.items():
             assert callable(probe_fn), f"Probe for {name} is not callable"
+
+
+class TestProbeGpu:
+    """GPU probe — surfaces CUDA availability (or lack of) for torch + paddle.
+
+    See docs/wsl-docker-gpu-pitfall.md for why this matters.
+    """
+
+    def test_gpu_healthy_when_torch_cuda_available(self, mock_local_doc_qa):
+        """torch sees CUDA → healthy, detail shows device name + CUDA version."""
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = True
+        fake_torch.cuda.get_device_name.return_value = "RTX 3080"
+        fake_torch.version.cuda = "12.6"
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.return_value = 1
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            status, detail, latency = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_HEALTHY
+        assert "RTX 3080" in detail
+        assert "12.6" in detail
+        assert "paddle cuda=ok" in detail
+        assert latency >= 0
+
+    def test_gpu_healthy_when_only_paddle_cuda(self, mock_local_doc_qa):
+        """torch missing CUDA but paddle can use GPU at runtime → still healthy."""
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = False
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.return_value = 1
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            status, detail, latency = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_HEALTHY
+        assert "paddle cuda=ok" in detail
+
+    def test_gpu_unhealthy_when_no_usable_device(self, mock_local_doc_qa):
+        """Both frameworks report no usable CUDA device → unhealthy.
+
+        Covers: paddle built without CUDA, GPU driver unreachable, or WSL2
+        missing /usr/lib/wsl mount. device_count() returns 0 in all three
+        cases — that's why the probe uses it instead of the misleading
+        is_compiled_with_cuda() (which returns True even when the GPU is
+        unreachable at runtime).
+        """
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = False
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.return_value = 0
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            status, detail, _ = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_UNHEALTHY
+        assert "both unavailable" in detail
+
+    def test_gpu_unhealthy_when_torch_cuda_raises(self, mock_local_doc_qa):
+        """torch.cuda.is_available() raising (e.g., cuInit returns 500) is
+        caught — probe falls through to paddle and reports unhealthy only
+        if paddle also fails. No 500 to the API caller.
+        """
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.side_effect = RuntimeError("Error 500: named symbol not found")
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.return_value = 0
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            status, detail, _ = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_UNHEALTHY
+        assert "both unavailable" in detail
+
+    def test_gpu_unhealthy_when_paddle_cuda_raises(self, mock_local_doc_qa):
+        """paddle.device.cuda.device_count() raising is caught too."""
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = False
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.side_effect = RuntimeError("cuInit failed")
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            status, detail, _ = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_UNHEALTHY
+        assert "both unavailable" in detail
+
+    def test_gpu_unhealthy_includes_wsl_hint_on_wsl(self, mock_local_doc_qa):
+        """On WSL the detail mentions the bind-mount pitfall."""
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = False
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.return_value = 0
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            with patch(
+                "bishon_kernel.monitoring.service_probes._is_wsl",
+                return_value=True,
+            ):
+                status, detail, _ = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_UNHEALTHY
+        assert "/usr/lib/wsl" in detail
+        assert "wsl-docker-gpu-pitfall.md" in detail
+
+    def test_gpu_unhealthy_no_wsl_hint_on_native_linux(self, mock_local_doc_qa):
+        """Native Linux without WSL → no bind-mount hint in detail."""
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = False
+        fake_paddle = MagicMock()
+        fake_paddle.device.cuda.device_count.return_value = 0
+
+        with patch.dict("sys.modules", {"torch": fake_torch, "paddle": fake_paddle}):
+            with patch(
+                "bishon_kernel.monitoring.service_probes._is_wsl",
+                return_value=False,
+            ):
+                status, detail, _ = probe_gpu(mock_local_doc_qa)
+
+        assert status == STATUS_UNHEALTHY
+        assert "/usr/lib/wsl" not in detail
+

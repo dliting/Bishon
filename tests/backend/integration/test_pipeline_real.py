@@ -39,6 +39,8 @@ async def real_api_client(tmp_path, monkeypatch):
     from bishon_kernel.connector.llm.llm_for_openai_api import OpenAILLM
     from bishon_kernel.connector.rerank.rerank_client import LocalRerankBackend
     from bishon_kernel.core.local_doc_qa import LocalDocQA
+    from bishon_kernel.monitoring.status_store import ServiceStatusStore
+    from bishon_kernel.monitoring.tracked_executor import TrackedExecutor
 
     db_dir = str(tmp_path / "db")
     os.makedirs(db_dir, exist_ok=True)
@@ -51,6 +53,8 @@ async def real_api_client(tmp_path, monkeypatch):
 
     # Save original app state
     original_local_doc_qa = getattr(app.state, 'local_doc_qa', None)
+    original_executor = getattr(app.state, 'executor', None)
+    original_monitor_store = getattr(app.state, 'monitor_store', None)
 
     local_doc_qa = LocalDocQA()
     local_doc_qa.embeddings    = OpenAIEmbeddings()
@@ -58,14 +62,36 @@ async def real_api_client(tmp_path, monkeypatch):
     local_doc_qa.kb_manager    = KnowledgeBaseManager()
     local_doc_qa.rerank_backend = LocalRerankBackend()
     local_doc_qa.faiss_kbs     = []
+    # handler.upload_files / chat read request.app.state.executor and .monitor_store
+    # — mirror what conftest.api_client sets up so the real-pipeline tests don't
+    # crash on the first background task.
+    test_executor = TrackedExecutor(max_workers=4)
+    test_monitor_store = ServiceStatusStore()
     app.state.local_doc_qa     = local_doc_qa
+    app.state.executor         = test_executor
+    app.state.monitor_store    = test_monitor_store
 
-    transport = ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
-
-    # Restore original app state
-    app.state.local_doc_qa = original_local_doc_qa
+    try:
+        transport = ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        # Drain queued _safe_insert tasks before tmp_path cleanup evicts the
+        # SQLite file (otherwise the bg thread recreates an empty DB and
+        # raises "no such table: File").
+        try:
+            future = test_executor.submit(lambda: None)
+            import time as _t
+            deadline = _t.monotonic() + 5.0
+            while not future.done() and _t.monotonic() < deadline:
+                _t.sleep(0.02)
+        except RuntimeError:
+            pass
+        test_executor.shutdown(wait=True)
+        # Restore original app state
+        app.state.local_doc_qa = original_local_doc_qa
+        app.state.executor = original_executor
+        app.state.monitor_store = original_monitor_store
 
 
 @requires_ollama

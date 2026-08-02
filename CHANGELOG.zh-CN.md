@@ -35,6 +35,10 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - **支持 `faiss-gpu-cu12` pip wheel** —— `requirements.txt` 现在写明了 GPU 路径（`pip install faiss-gpu-cu12`，需先卸载 `faiss-cpu`），不再写"GPU 版本需通过 conda 安装"。
 
 ### 修复
+- **import 时机导致 `.env` 未生效**。`bishon_kernel/__init__.py` 现在在任何子模块导入前先 `load_dotenv` —— connector 模块（`llm_for_openai_api`、`openai_embedding`）在 import 时就捕获 `os.getenv` 结果，任何模块先于 `model_config` 的 `load_dotenv` 被导入都会拿到 `None`/默认值。这是 LLM probe 报 `no API base URL configured`、embedding probe 无视 `.env` 指向 localhost 的根因。
+- **probe 补上鉴权头**。`probe_llm` 对非 ollama provider 发送 `Authorization: Bearer <key>`（讯飞 MaaS 的 `GET /v1/models` 强制要求）；`probe_embedding` 在 `EMBEDDING_API_KEY` 已设置且不等于 `EMPTY` 时发送 Bearer。
+- **`probe_sqlite` 改为新开连接**。`KnowledgeBaseManager` 本来就是一次性连接，probe 现在 `sqlite3.connect(DB_PATH)` + `SELECT 1`，不再找那个从不存在的持久 `kb_manager.conn`。
+- **OCR GPU 检测与实际 paddle 构建匹配**。`can_use_ocr_gpu` 现在检查 `paddle.device.is_compiled_with_cuda()` 而非只信 `OCR_USE_GPU`；当请求 GPU 但 paddle 是 CPU 构建时，`local_doc_qa` 降级到 CPU 并告警，而不是把虚假的 GPU 参数传进 PaddleOCR。
 - **测试隔离：后台 `_safe_insert` 不再越过 fixture 清理**。`tests/backend/integration/conftest.py::api_client` 现在在 `tmp_path` 清理之前先 drain `handler._executor` —— 之前队列里的 `_safe_insert` 会和 pytest 的 tmp_path 删除赛跑，触发 `sqlite3.OperationalError: no such table: File`（SQLite 把空文件当成新库自动建）。测试套件从 `1 error` 变成 `0 errors`（244 passed）。
 
 ### 变更

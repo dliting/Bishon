@@ -145,8 +145,10 @@ ls -la models
 ls models/paddleocr_models/   # 应有 det/rec/cls/doc_ori
 ls models/Qwen3-Reranker-0.6B/
 
-# 启动 bare-metal
+# 启动 bare-metal（前台）
 bash start.sh
+# 或后台运行（开发常用，日志在 logs/backend.log）
+bash start.sh --daemon
 # 在另一个终端
 curl http://localhost:8777/api/health
 curl http://localhost:8777/bishon/
@@ -255,6 +257,31 @@ df -T /opt/Bishon/V2/BISHON_DB
 ```
 
 如果错误地通过符号链接把 `BISHON_DB/` 指向了 `/mnt/...`，删掉符号链接、把数据迁回 ext4。
+
+### Q: WSL 里连不上 Windows 上跑的 Ollama/其他服务（Connection refused）？
+
+WSL2 默认是 **NAT 网络模式**（`.wslconfig` 未配 `networkingMode=mirrored` 时），Windows 主机服务**不能**通过 `localhost` 从 WSL 访问——`localhost` 只指 WSL 自己的网络命名空间。必须在 `.env` 里用**网关 IP**：
+
+```bash
+ip route show default
+# 输出示例: default via 172.23.16.1 dev eth0
+# 网关即 Windows 主机地址（每次 WSL 重启可能变化，重设后要改 .env 并重启后端）
+```
+
+```env
+# Windows 上启动的 Ollama（qwen3:8b + qwen3-embedding:0.6b）
+OPENAI_API_BASE=http://172.23.16.1:11434/v1
+EMBEDDING_API_BASE=http://172.23.16.1:11434/v1/embeddings
+```
+
+从 WSL 侧验证连通性：
+
+```bash
+curl http://<gateway-ip>:11434/api/tags          # Ollama 原生端点
+curl http://<gateway-ip>:11434/v1/models         # OpenAI 兼容端点（probe 用的就是它）
+```
+
+改成 mirrored 模式（`.wslconfig` 写 `networkingMode=mirrored` + `wsl --shutdown` 重启）后 `localhost` 才直通 Windows。注意：**LLM/embedding probe 访问失败 ≠ 配置错误一定是地址问题**——改了 `.env` 必须重启 uvicorn 进程（连接器模块在 import 时就读取环境变量，热更新不生效）。
 
 ### Q: 想用 Windows IDE 编辑源码怎么办？
 

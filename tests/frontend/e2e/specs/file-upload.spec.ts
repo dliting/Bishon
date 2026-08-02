@@ -228,4 +228,58 @@ test.describe('File Upload', () => {
     await expect(page.locator('.private-modal')).toBeVisible()
     await page.locator('.private-modal .ant-btn-primary').click()
   })
+
+  test('上传图片（PNG，走 OCR 解析）', async ({ page }) => {
+    const kbName = 'OcrUpload_' + Date.now()
+
+    // Create KB - dialog auto-opens
+    await page.getByPlaceholder('请输入知识库名称').fill(kbName)
+    await page.locator('.add-button').click()
+    await expect(page.locator('.upload-file-modal .ant-modal-title')).toContainText('上传文档', { timeout: 10000 })
+
+    // Generate a PNG with text via canvas (no fixture file needed)
+    const dataUrl = await page.evaluate(() => {
+      const c = document.createElement('canvas')
+      c.width = 800
+      c.height = 240
+      const ctx = c.getContext('2d')
+      ctx.fillStyle = 'white'
+      ctx.fillRect(0, 0, 800, 240)
+      ctx.fillStyle = 'black'
+      ctx.font = 'bold 44px sans-serif'
+      ctx.fillText('Bishon OCR 2026', 60, 90)
+      ctx.fillText('知识库问答系统', 60, 170)
+      return c.toDataURL('image/png')
+    })
+    const pngBuffer = Buffer.from(dataUrl.split(',')[1], 'base64')
+
+    // Upload via file chooser with PNG mime type
+    const fileChooserPromise = page.waitForEvent('filechooser')
+    await page.locator('.upload-file-modal .before-upload-box').click()
+    const fileChooser = await fileChooserPromise
+    await fileChooser.setFiles({
+      name: 'ocr_test.png',
+      mimeType: 'image/png',
+      buffer: pngBuffer,
+    })
+    await expect(page.getByText('上传成功')).toBeVisible({ timeout: 15000 })
+    await page.locator('.upload-file-modal .upload-btn').click()
+
+    // OCR parsing on CPU is slow — generous timeout
+    const row = page.locator('.ant-table-tbody tr').filter({ hasText: 'ocr_test.png' })
+    await expect(row).toBeVisible({ timeout: 10000 })
+    await waitForFileGreen(page, 'ocr_test.png', 180000)
+
+    // Cleanup: delete KB
+    const backBtn = page.getByText('返回对话')
+    if (await backBtn.isVisible()) {
+      await backBtn.click()
+    }
+    const card = page.locator('.sider .card').filter({ hasText: kbName })
+    await card.hover()
+    await page.waitForTimeout(500)
+    await page.locator('.card-hover').getByText('删除').click()
+    await expect(page.locator('.private-modal')).toBeVisible()
+    await page.locator('.private-modal .ant-btn-primary').click()
+  })
 })

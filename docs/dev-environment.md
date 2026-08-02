@@ -125,7 +125,7 @@ bash scripts/common/download-models.sh
 - `--offline <tar.gz>` 从已有的 models tarball 解压（内网部署用）
 - `--dry-run` 仅打印下载源，不实际下载
 
-> **注意**：`--target` 只影响 Qwen3-Reranker 的下载位置。PaddleOCR 模型由 `paddleocr` 包按 `bishon_kernel/configs/model_config.py` 推导的路径（`<repo-root>/models/paddleocr_models/`）放置，与 `--target` 无关——这是应用代码的硬约束。如需把整套模型放到别处，建议符号链接 `models/` 整目录而不是改 `--target`。
+> **注意**：`--target` 只影响 Qwen3-Reranker 的下载位置。PaddleOCR 模型（paddleocr≥3.7 默认 **PP-OCRv6_medium**）由 paddlex 先下载到 `~/.paddlex/official_models/` 缓存，脚本再把 det/rec/cls/doc_ori 复制到 `<repo-root>/models/paddleocr_models/`（应用代码用 `model_dir` 显式加载该布局，不读 paddlex 缓存）。如需把整套模型放到别处，建议符号链接 `models/` 整目录而不是改 `--target`。模型源切换：`PADDLE_PDX_MODEL_SOURCE=hf`（HuggingFace）或默认 `modelscope`。
 
 环境变量：
 - `HF_ENDPOINT` 自定义 HuggingFace 镜像（默认 `https://hf-mirror.com`）

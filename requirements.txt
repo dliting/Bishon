@@ -32,9 +32,15 @@ opencv-python>=4.8
 beautifulsoup4>=4.12
 docx2txt>=0.8
 
-# OCR（模型自动下载到 models/paddleocr_models/）
+# OCR（PP-OCRv6 模型，布局 models/paddleocr_models/{det,rec,cls,doc_ori}）
+# - 默认装 CPU 版（小）。要 GPU 加速：pip uninstall paddlepaddle &&
+#   pip install paddlepaddle-gpu==<same-ver> -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+#   （cu126 匹配 CUDA 12.x；CPU 版 paddle>=3.3 有 oneDNN/PIR 推理 bug，
+#    应用内已用 enable_mkldnn=False 兜底）
+# - paddleocr>=3.7 默认模型为 PP-OCRv6_medium（det +4.6% / rec +5.1% vs v5_server，
+#   50 语言统一）；下载模型用 scripts/common/download-models.sh
 paddlepaddle>=3.0
-paddleocr>=3.0
+paddleocr>=3.7,<3.8
 
 # Rerank 模型（进程内加载，Qwen3-Reranker-0.6B）
 transformers>=4.51

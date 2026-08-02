@@ -30,7 +30,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TARGET="$REPO_ROOT/models"
 DRY_RUN=false
 OFFLINE_TAR=""
@@ -119,13 +119,19 @@ PY
 fi
 
 # --- 2. PaddleOCR models via paddleocr package -------------------------------
+# paddleocr >=3.7 downloads PP-OCRv6_medium models into the paddlex cache
+# (~/.paddlex/official_models/), NOT into models/paddleocr_models/ — the app
+# reads model_dir explicitly. So after triggering the download we copy the
+# cached models into the app layout (det/rec/cls/doc_ori), same as local_doc_qa
+# expects. Model source: set PADDLE_PDX_MODEL_SOURCE=hf (HuggingFace) or
+# modelscope (default) to choose the mirror.
 if ! $SKIP_PADDLEOCR; then
     PADDLE_DIR="$TARGET/paddleocr_models"
-    log "=== PaddleOCR models → $PADDLE_DIR ==="
-    log "source: PaddlePaddle CDN (auto-downloaded by paddleocr package on first use)"
+    log "=== PaddleOCR models (PP-OCRv6_medium) → $PADDLE_DIR ==="
+    log "source: paddlex official models (modelscope/HuggingFace), see PADDLE_PDX_MODEL_SOURCE"
 
     if $DRY_RUN; then
-        log "(dry-run) would: trigger paddleocr auto-download via bishon env python"
+        log "(dry-run) would: trigger paddleocr PP-OCRv6_medium download and copy to $PADDLE_DIR"
     else
         BISHON_PY="${BISHON_PY:-/opt/miniconda3/envs/bishon/bin/python}"
         if [ ! -x "$BISHON_PY" ]; then
@@ -135,27 +141,31 @@ if ! $SKIP_PADDLEOCR; then
        inside the bishon conda env. To pre-populate, ensure the env is
        available and re-run this script, or trigger OCR once:
          conda activate bishon
-         python -c "from paddleocr import PaddleOCR; PaddleOCR(use_angle_cls=True, lang='ch')"
+         python -c "from paddleocr import PaddleOCR; PaddleOCR(text_detection_model_name='PP-OCRv6_medium_det', text_recognition_model_name='PP-OCRv6_medium_rec')"
        Models land in $PADDLE_DIR by default.
 EOF
         else
-            log "triggering paddleocr model auto-download..."
+            log "triggering paddleocr PP-OCRv6_medium download..."
             cd "$REPO_ROOT"
-            # The init_cfg flow in local_doc_qa.py sets the model dir explicitly;
-            # mirror that here by setting the env var PADDLEOCR_HOME if needed.
             "$BISHON_PY" - <<'PY' 2>&1 | sed 's/^/  /' || log "paddleocr init warning (non-fatal)"
-import os, sys
-sys.path.insert(0, os.getcwd())
-# Import side-effect triggers model download to models/paddleocr_models/.
-from bishon_kernel.configs.model_config import root_path
-ocr_dir = os.path.join(root_path, 'models', 'paddleocr_models')
-os.makedirs(ocr_dir, exist_ok=True)
-# PaddleOCR 3.x: PaddleOCR() init triggers downloads to the configured dir.
 from paddleocr import PaddleOCR
-PaddleOCR(use_angle_cls=True, lang='ch', ocr_version='PP-OCRv4')
+PaddleOCR(
+    text_detection_model_name="PP-OCRv6_medium_det",
+    text_recognition_model_name="PP-OCRv6_medium_rec",
+    use_doc_orientation_classify=True,
+    use_doc_unwarping=False,
+)
 print("paddleocr models ready")
 PY
-            log "paddleocr auto-download triggered."
+            PADDLEX_CACHE="$HOME/.paddlex/official_models"
+            log "copying cached models into $PADDLE_DIR ..."
+            mkdir -p "$PADDLE_DIR/det" "$PADDLE_DIR/rec" "$PADDLE_DIR/cls" "$PADDLE_DIR/doc_ori"
+            cp "$PADDLEX_CACHE/PP-OCRv6_medium_det/"*    "$PADDLE_DIR/det/"
+            cp "$PADDLEX_CACHE/PP-OCRv6_medium_rec/"*    "$PADDLE_DIR/rec/"
+            cp "$PADDLEX_CACHE/PP-LCNet_x1_0_textline_ori/"* "$PADDLE_DIR/cls/"
+            cp "$PADDLEX_CACHE/PP-LCNet_x1_0_doc_ori/"*  "$PADDLE_DIR/doc_ori/"
+            rm -f "$PADDLE_DIR/cls/img_textline180_demo_res."* "$PADDLE_DIR/det/README.md"
+            log "paddleocr models copied (det/rec/cls/doc_ori)."
         fi
     fi
 fi

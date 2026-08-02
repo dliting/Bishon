@@ -98,11 +98,22 @@ esac
 # containers can reach services like Ollama running on Windows.
 # In native Linux, this is skipped — Docker Desktop or the operator handles it.
 ADD_HOST_FLAG=()
+WSL_DRIVER_FLAG=()
 if grep -qi microsoft /proc/version 2>/dev/null; then
     HOST_GATEWAY="$(ip route | grep default | awk '{print $3}' 2>/dev/null || true)"
     if [ -n "$HOST_GATEWAY" ]; then
         ADD_HOST_FLAG=(--add-host "host.docker.internal:$HOST_GATEWAY")
         log "host.docker.internal → $HOST_GATEWAY (WSL gateway)"
+    fi
+
+    # WSL2 only: bind-mount the WSL GPU driver dir. nvidia-container-runtime
+    # cherry-picks which libs to mount and historically missed libnvdxgdmal.so.1
+    # (the DXG DMA helper). Without it, libcuda.so.1's proxy returns
+    # "Error 500: named symbol not found" on the first cuInit() call — even
+    # though nvidia-smi works. See docs/wsl-docker-gpu-pitfall.md.
+    if [ -d /usr/lib/wsl/drivers ]; then
+        WSL_DRIVER_FLAG=(-v /usr/lib/wsl:/usr/lib/wsl:ro)
+        log "WSL2 GPU driver mount: /usr/lib/wsl → /usr/lib/wsl (ro)"
     fi
 fi
 
@@ -114,6 +125,7 @@ docker run -d \
     --env-file "$HOST_DIR/.env" \
     -v "$HOST_DIR:/opt/bishon-data" \
     "${ADD_HOST_FLAG[@]}" \
+    "${WSL_DRIVER_FLAG[@]}" \
     --restart unless-stopped \
     "$IMAGE" \
     >/dev/null

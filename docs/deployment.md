@@ -120,7 +120,7 @@ ls dist/
 
 | 交付物 | 大小 | 内容 |
 |---|---|---|
-| `bishon-cuda:<version>` 镜像 | ~4 GiB | CUDA 12.1 runtime + Ubuntu 22.04 + 系统库 + 时区 + miniconda3 base（**无 envs**） |
+| `bishon-cuda:<version>` 镜像 | ~4 GiB | CUDA 12.6 runtime + Ubuntu 22.04 + 系统库 + 时区 + miniconda3 base（**无 envs**） |
 | `bishon-cuda-image-<version>.tar` | ~4 GiB | `docker save` 产出的镜像 tar |
 | `bishon-release-<version>.tar.gz` | ~5–7 GiB | `python-env/` + `bishon/` 源码 + `models/` + `scripts/` + `.env.example` |
 
@@ -180,7 +180,7 @@ ls dist/
 ### 部署机（安装运行）
 
 - **Linux x86_64**，内核版本与 Ubuntu 22.04 兼容即可。
-- **Docker** + **NVIDIA Container Toolkit**（仅 CUDA 镜像需要；验证：`docker run --rm --gpus all nvidia/cuda:12.1.0-runtime-ubuntu22.04 nvidia-smi`）。
+- **Docker** + **NVIDIA Container Toolkit**（仅 CUDA 镜像需要；验证：`docker run --rm --gpus all nvidia/cuda:12.6.3-runtime-ubuntu22.04 nvidia-smi`）。
 - **`curl`**（启动脚本的健康检查需要）。
 - **ext4（或非 9p/drvfs）文件系统**挂载点 — 见 [避坑指南 #2](#避坑指南对照表)。
 - **模型文件**（部署机不需要直接下载，但开发机制作发布包时需要）：
@@ -419,6 +419,10 @@ docker exec bishon bash -lc 'echo LLM=$OPENAI_API_BASE; curl -sS -m 5 "$OPENAI_A
 ```
 
 最后一条用单引号让 `$OPENAI_API_BASE` 在**容器内**展开。若返回空或错误，说明容器无法访问 LLM 服务 — 检查 [.env] 配置（[避坑指南 #1](#避坑指南对照表)）。
+
+### WSL2 部署：`/api/health` 报 `gpu` 不健康，或 `torch.cuda.is_available()` 返回 False
+
+容器里 `nvidia-smi` 正常但 `torch.cuda` / `paddle.cuda` 用不了，典型症状是 `cuInit(0)` 返回错误码 500（`CUDA_ERROR_SYMBOL_NOT_FOUND`）。根因是 `nvidia-container-runtime` 在 WSL 下 cherry-pick 驱动文件时漏掉了 `libnvdxgdmal.so.1`。`start.sh` 已在 WSL 分支自动 bind-mount `/usr/lib/wsl:/usr/lib/wsl:ro` 规避；若仍报错（例如换了镜像或手动启动），完整排查清单见 [docs/wsl-docker-gpu-pitfall.md](wsl-docker-gpu-pitfall.md)。
 
 ### 安装时报 "filesystem is 9p/drvfs"
 

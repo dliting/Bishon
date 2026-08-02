@@ -155,6 +155,7 @@ const serviceNameMap: Record<string, string> = {
   ocr: 'OCR 服务',
   faiss: '向量数据库 (FAISS)',
   sqlite: '数据库 (SQLite)',
+  gpu: 'GPU/CUDA',
 };
 
 const statusTextMap: Record<string, string> = {

@@ -9,6 +9,13 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+### Added
+- **GPU / CUDA availability probe in `/api/health`.** A new `gpu` service entry (registered in `ServiceStatusStore.ALL_SERVICES`) reports whether `torch.cuda.is_available()` or `paddle.device.cuda.device_count()` see a usable device. Detail string includes device name + CUDA version when healthy, and on WSL2 specifically points operators to `docs/wsl-docker-gpu-pitfall.md` when both frameworks report no device (the classic missing-`/usr/lib/wsl` bind-mount symptom). Both checks are runtime probes, not compile-time flags — `paddle.device.is_compiled_with_cuda()` is deliberately NOT used because it returns True even when the GPU is unreachable at runtime. Surfaces the WSL2 docker GPU regression in monitoring rather than letting Rerank/FAISS-GPU/PaddleOCR-GPU silently fall back to CPU. Backed by 7 unit tests in `tests/backend/unit/monitoring/test_service_probes.py`.
+
+### Fixed
+- **WSL2 GPU passthrough — `nvidia-smi` worked but `torch.cuda.is_available()` returned `False` inside the container.** Root cause: `nvidia-container-runtime` cherry-picks WSL driver files into the container and historically missed `libnvdxgdmal.so.1` (the DXG DMA helper). Without it, the WSL `libcuda.so.1` proxy returns `Error 500: named symbol not found` on the first `cuInit()` call — silently breaking Rerank/FAISS-GPU/PaddleOCR-GPU inside the container while `nvidia-smi` reports the GPU fine. Fix: `scripts/docker/start.sh` now bind-mounts `/usr/lib/wsl:/usr/lib/wsl:ro` when running under WSL (`grep -qi microsoft /proc/version`). Native Linux deployments are unaffected. Full write-up in `docs/wsl-docker-gpu-pitfall.md`.
+- **Container CUDA base aligned with torch/paddle wheels.** `docker/Dockerfile.cuda` base bumped from `nvidia/cuda:12.1.0-runtime-ubuntu22.04` to `nvidia/cuda:12.6.3-runtime-ubuntu22.04` to match torch 2.12+cu126 / paddlepaddle-gpu cu126. Driver requirements: native Linux ≥525 (CUDA 12.x); WSL2 needs the matching Windows NVIDIA driver ≥555.x for CUDA 12.6 (Windows release branch R555+). Note: this bump alone did not fix the WSL2 GPU issue above — the bind-mount was the actual fix.
+
 ## [2.2.0] - 2026-08-02
 
 ### ⚠️ Upgrade Notice (v2.1 → v2.2)

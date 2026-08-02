@@ -579,6 +579,13 @@ curl http://localhost:8777/api/health
       "last_check": 1722500000.0,
       "last_success": 1722500000.0,
       "latency_ms": 0.3
+    },
+    "gpu": {
+      "status": "healthy",
+      "detail": "torch cuda=12.6 (NVIDIA GeForce RTX 3080 Laptop GPU) | paddle cuda=ok",
+      "last_check": 1722500000.0,
+      "last_success": 1722500000.0,
+      "latency_ms": 0.08
     }
   },
   "queue": {

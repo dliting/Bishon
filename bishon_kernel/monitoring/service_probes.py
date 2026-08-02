@@ -15,6 +15,7 @@ import httpx
 from bishon_kernel.monitoring.status_store import (
     SERVICE_EMBEDDING,
     SERVICE_FAISS,
+    SERVICE_GPU,
     SERVICE_LLM,
     SERVICE_OCR,
     SERVICE_RERANK,
@@ -195,6 +196,88 @@ def probe_sqlite(local_doc_qa) -> tuple[str, str, float]:
         return STATUS_UNHEALTHY, f"SQLite: {e}", latency
 
 
+# ── GPU / CUDA probe ─────────────────────────────────────────────────
+
+def _is_wsl() -> bool:
+    """Return True iff running under WSL (1 or 2).
+
+    Returns False if /proc/version isn't readable (e.g., non-Linux hosts in
+    tests). Isolated as a helper so tests can patch this function directly
+    instead of mocking builtins.open with a tmp file.
+    """
+    try:
+        with open("/proc/version") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def probe_gpu(local_doc_qa) -> tuple[str, str, float]:  # noqa: ARG001
+    """Check CUDA availability via torch + paddle.
+
+    Surfaces the WSL2 docker GPU regression (libcuda.so.1 proxy returning
+    Error 500 when libnvdxgdmal.so.1 isn't bind-mounted) in /api/health
+    rather than letting it silently fall back to CPU. See
+    docs/wsl-docker-gpu-pitfall.md.
+
+    Both checks are RUNTIME probes, not compile-time — torch.cuda.is_available()
+    and paddle.device.cuda.device_count() actually try to initialize CUDA,
+    so they correctly report False when the driver is unreachable (unlike
+    paddle.device.is_compiled_with_cuda() which only checks wheel build flags).
+
+    Healthy if at least one framework sees a usable CUDA device. Unhealthy
+    otherwise — detail explains the most likely cause for the deployment
+    context.
+    """
+    # latency includes torch/paddle import time (can be a few hundred ms cold)
+    # — that's fine, the probe runs every 60s in a background thread.
+    start = time.time()
+    torch_avail = False
+    paddle_avail = False
+    device_name = ""
+    cuda_version = ""
+
+    try:
+        import torch
+        torch_avail = bool(torch.cuda.is_available())
+        if torch_avail:
+            device_name = torch.cuda.get_device_name(0)
+            cuda_version = str(torch.version.cuda)
+    except Exception as e:
+        logger.warning("probe_gpu: torch import failed: %s", e)
+
+    try:
+        import paddle
+        # device_count() is a runtime probe — it returns 0 whether paddle was
+        # built without CUDA, the driver is unreachable, or libcuda.so.1's
+        # dependency (libnvdxgdmal.so.1 on WSL) is missing. Do NOT gate this
+        # with is_compiled_with_cuda() — that flag is True even when the GPU
+        # is unusable at runtime (see docs/wsl-docker-gpu-pitfall.md).
+        paddle_avail = paddle.device.cuda.device_count() > 0
+    except Exception as e:
+        logger.warning("probe_gpu: paddle import/runtime check failed: %s", e)
+
+    latency = (time.time() - start) * 1000
+
+    if torch_avail or paddle_avail:
+        parts = []
+        if torch_avail:
+            parts.append(f"torch cuda={cuda_version} ({device_name})")
+        if paddle_avail:
+            parts.append("paddle cuda=ok")
+        return STATUS_HEALTHY, " | ".join(parts), latency
+
+    # Both unavailable — explain the most likely cause.
+    hints = ["torch.cuda/paddle.cuda both unavailable"]
+    if _is_wsl():
+        hints.insert(
+            0,
+            "WSL detected — likely missing /usr/lib/wsl:/usr/lib/wsl:ro "
+            "bind-mount; see docs/wsl-docker-gpu-pitfall.md",
+        )
+    return STATUS_UNHEALTHY, "; ".join(hints), latency
+
+
 # ── Registry ─────────────────────────────────────────────────────────
 
 ALL_PROBES: dict[str, Callable] = {
@@ -204,4 +287,5 @@ ALL_PROBES: dict[str, Callable] = {
     SERVICE_OCR:       probe_ocr,
     SERVICE_FAISS:     probe_faiss,
     SERVICE_SQLITE:    probe_sqlite,
+    SERVICE_GPU:       probe_gpu,
 }

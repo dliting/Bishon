@@ -13,6 +13,7 @@ SERVICE_RERANK    = "rerank"
 SERVICE_OCR       = "ocr"
 SERVICE_FAISS     = "faiss"
 SERVICE_SQLITE    = "sqlite"
+SERVICE_GPU       = "gpu"
 
 ALL_SERVICES = [
     SERVICE_LLM,
@@ -21,6 +22,7 @@ ALL_SERVICES = [
     SERVICE_OCR,
     SERVICE_FAISS,
     SERVICE_SQLITE,
+    SERVICE_GPU,
 ]
 
 # Status value constants

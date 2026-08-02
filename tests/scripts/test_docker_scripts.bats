@@ -290,3 +290,26 @@ EOF
     [ "$status" -eq 1 ]   # WARN path: no src files → assume dist current
     rm -rf "$tmp"
 }
+
+# ---------------------------------------------------------------------------
+# 8. WSL2 GPU passthrough — start.sh must mount /usr/lib/wsl on WSL
+#    (avoids libcuda.so.1 proxy Error 500; see docs/wsl-docker-gpu-pitfall.md)
+# ---------------------------------------------------------------------------
+
+@test "start.sh has WSL2 driver bind-mount guard" {
+    [ -f "$REPO_ROOT/scripts/docker/start.sh" ]
+    # WSL detection
+    grep -q "grep -qi microsoft /proc/version" "$REPO_ROOT/scripts/docker/start.sh"
+    # The actual mount flag (or its variable holder)
+    grep -qE "WSL_DRIVER_FLAG=\(-v /usr/lib/wsl:/usr/lib/wsl:ro\)|/usr/lib/wsl:/usr/lib/wsl:ro" \
+        "$REPO_ROOT/scripts/docker/start.sh"
+    # And it must be passed to docker run
+    grep -q '"${WSL_DRIVER_FLAG\[@\]}"' "$REPO_ROOT/scripts/docker/start.sh"
+}
+
+@test "wsl-docker-gpu-pitfall.md doc exists" {
+    [ -f "$REPO_ROOT/docs/wsl-docker-gpu-pitfall.md" ]
+    grep -q "libnvdxgdmal" "$REPO_ROOT/docs/wsl-docker-gpu-pitfall.md"
+    grep -q "Error 500" "$REPO_ROOT/docs/wsl-docker-gpu-pitfall.md"
+}
+

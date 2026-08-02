@@ -12,6 +12,13 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+### 新增
+- **`/api/health` 新增 GPU / CUDA 可用性探针。** 在 `ServiceStatusStore.ALL_SERVICES` 注册新的 `gpu` 服务项，报告 `torch.cuda.is_available()` 或 `paddle.device.cuda.device_count()` 是否能看到可用设备。健康时 detail 含设备名 + CUDA 版本；WSL2 环境下两个框架都报告无设备时，detail 直接指向 `docs/wsl-docker-gpu-pitfall.md`（典型的缺 `/usr/lib/wsl` bind-mount 症状）。两个检查都是**运行时**探针——刻意不用 `paddle.device.is_compiled_with_cuda()`，因为它在 GPU 运行时不可用时仍返回 True（误报）。把 WSL2 docker GPU 回归问题暴露到监控里，避免 Rerank/FAISS-GPU/PaddleOCR-GPU 静默回退到 CPU 还发现不了。新增 7 个单元测试在 `tests/backend/unit/monitoring/test_service_probes.py`。
+
+### 修复
+- **WSL2 GPU 直通——`nvidia-smi` 正常但容器内 `torch.cuda.is_available()` 返回 `False`。** 根因：`nvidia-container-runtime` 在 cherry-pick WSL 驱动文件时漏掉了 `libnvdxgdmal.so.1`（DXG DMA 助手）。少了它，WSL 的 `libcuda.so.1` 代理第一次 `cuInit()` 就返回 `Error 500: named symbol not found`——容器内 Rerank / FAISS-GPU / PaddleOCR-GPU 静默回退到 CPU，而 `nvidia-smi` 仍正常显示 GPU。修复：`scripts/docker/start.sh` 在 WSL 环境下（`grep -qi microsoft /proc/version`）自动 bind-mount `-v /usr/lib/wsl:/usr/lib/wsl:ro`。原生 Linux 部署不受影响。完整记录见 `docs/wsl-docker-gpu-pitfall.md`。
+- **容器 CUDA base 与 torch/paddle wheel 对齐。** `docker/Dockerfile.cuda` 基础镜像从 `nvidia/cuda:12.1.0-runtime-ubuntu22.04` 升级到 `nvidia/cuda:12.6.3-runtime-ubuntu22.04`，匹配 torch 2.12+cu126 / paddlepaddle-gpu cu126。驱动要求：原生 Linux ≥525（CUDA 12.x）；WSL2 需对应的 Windows NVIDIA 驱动 ≥555.x（CUDA 12.6 在 WSL 上的最低支持版本）。注：单做这一项**不能**修上面的 WSL2 GPU 问题——真正生效的是 `/usr/lib/wsl` 那个 bind-mount。
+
 ## [2.2.0] - 2026-08-02
 
 ### ⚠️ 升级须知（v2.1 → v2.2）

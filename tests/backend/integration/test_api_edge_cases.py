@@ -21,7 +21,7 @@ class TestHealthEndpoint:
         resp = await api_client.get("/api/health")
         body = resp.json()
         services = body["services"]
-        expected_services = {"llm", "embedding", "rerank", "ocr", "faiss", "sqlite"}
+        expected_services = {"llm", "embedding", "rerank", "ocr", "faiss", "sqlite", "gpu"}
         assert set(services.keys()) == expected_services
         for name, svc in services.items():
             assert "status" in svc

@@ -28,7 +28,18 @@ from bishon_kernel.monitoring import (  # noqa: E402
     TrackedExecutor,
 )
 
-APP_VERSION = "2.1.0"
+def _read_app_version() -> str:
+    """Read version from VERSION file at repo root. Avoids drift between
+    VERSION file and /api/health endpoint."""
+    version_path = os.path.join(root_dir, "VERSION")
+    try:
+        with open(version_path, "r", encoding="utf-8") as f:
+            return f.read().strip() or "0.0.0-unknown"
+    except OSError:
+        return "0.0.0-unknown"
+
+
+APP_VERSION = _read_app_version()
 
 # Global instance
 local_doc_qa: LocalDocQA = None

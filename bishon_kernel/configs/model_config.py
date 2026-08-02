@@ -9,7 +9,9 @@ current_script_path = os.path.abspath(__file__)
 root_path = os.path.dirname(os.path.dirname(os.path.dirname(current_script_path)))
 
 # Explicit .env path so the config is found regardless of CWD.
-# This is the single .env entry point; other modules should not call load_dotenv again.
+# bishon_kernel/__init__.py also loads .env at package import so connector
+# modules capturing env at import time see the values regardless of import
+# order; this call covers direct imports of this module. Idempotent.
 load_dotenv(os.path.join(root_path, '.env'))
 
 UPLOAD_ROOT_PATH = os.path.join(root_path, "BISHON_DB", "content")

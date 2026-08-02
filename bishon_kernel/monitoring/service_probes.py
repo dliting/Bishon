@@ -36,7 +36,9 @@ def probe_llm(local_doc_qa) -> tuple[str, str, float]:  # noqa: ARG001
     - Ollama: ``GET /api/tags``
     - OpenAI / MiniMax: ``GET /v1/models``
     """
-    from bishon_kernel.connector.llm.llm_for_openai_api import LLM_PROVIDER, OPENAI_API_BASE, OPENAI_API_MODEL_NAME
+    from bishon_kernel.connector.llm.llm_for_openai_api import (
+        LLM_PROVIDER, OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_API_MODEL_NAME,
+    )
 
     base_url = (OPENAI_API_BASE or "").rstrip("/")
     provider = LLM_PROVIDER
@@ -48,16 +50,20 @@ def probe_llm(local_doc_qa) -> tuple[str, str, float]:  # noqa: ARG001
             api_base = api_base[:-3]
         url = f"{api_base}/api/tags"
     else:
-        # OpenAI-compatible /v1/models
+        # OpenAI-compatible /v1/models (requires auth on some providers)
         url = f"{base_url}/models" if base_url else ""
 
     if not url:
         return STATUS_UNHEALTHY, f"{provider}: no API base URL configured", 0.0
 
+    headers = {}
+    if provider != "ollama" and OPENAI_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENAI_API_KEY}"
+
     start = time.time()
     try:
         with httpx.Client(timeout=PROBE_TIMEOUT_SECONDS) as client:
-            resp = client.get(url)
+            resp = client.get(url, headers=headers)
         latency = (time.time() - start) * 1000
         resp.raise_for_status()
         return STATUS_HEALTHY, f"{provider} {OPENAI_API_MODEL_NAME} @ {base_url}", latency
@@ -70,7 +76,9 @@ def probe_llm(local_doc_qa) -> tuple[str, str, float]:  # noqa: ARG001
 
 def probe_embedding(local_doc_qa) -> tuple[str, str, float]:  # noqa: ARG001
     """Check embedding service reachability via ``GET /v1/models``."""
-    from bishon_kernel.connector.embedding.openai_embedding import BASE_URL, EMBEDDING_MODEL_NAME
+    from bishon_kernel.connector.embedding.openai_embedding import (
+        BASE_URL, EMBEDDING_API_KEY, EMBEDDING_MODEL_NAME,
+    )
 
     base_url = (BASE_URL or "").rstrip("/")
     url = f"{base_url}/models" if base_url else ""
@@ -78,10 +86,14 @@ def probe_embedding(local_doc_qa) -> tuple[str, str, float]:  # noqa: ARG001
     if not url:
         return STATUS_UNHEALTHY, "no embedding API base URL configured", 0.0
 
+    headers = {}
+    if EMBEDDING_API_KEY and EMBEDDING_API_KEY != "EMPTY":
+        headers["Authorization"] = f"Bearer {EMBEDDING_API_KEY}"
+
     start = time.time()
     try:
         with httpx.Client(timeout=PROBE_TIMEOUT_SECONDS) as client:
-            resp = client.get(url)
+            resp = client.get(url, headers=headers)
         latency = (time.time() - start) * 1000
         resp.raise_for_status()
         return STATUS_HEALTHY, f"{EMBEDDING_MODEL_NAME} @ {base_url}", latency
@@ -146,22 +158,37 @@ def probe_faiss(local_doc_qa) -> tuple[str, str, float]:
 # ── SQLite probe ─────────────────────────────────────────────────────
 
 def probe_sqlite(local_doc_qa) -> tuple[str, str, float]:
-    """Check SQLite database connectivity via ``SELECT 1``."""
+    """Check SQLite database connectivity via ``SELECT 1``.
+
+    KnowledgeBaseManager uses one-shot connections (sqlite3.connect per query),
+    so we open a fresh connection here using the module-level DB_PATH that
+    ``_execute`` itself uses. This mirrors how the app actually talks to SQLite
+    rather than probing a persistent connection that doesn't exist.
+    """
     kb_manager = getattr(local_doc_qa, "kb_manager", None)
     if kb_manager is None:
         return STATUS_UNHEALTHY, "KnowledgeBaseManager not initialized", 0.0
 
+    # Resolve DB_PATH from the sqlite_client module (set by KnowledgeBaseManager.__init__
+    # and adjustable via monkeypatch in tests).
+    try:
+        from bishon_kernel.connector.database.sqlite import sqlite_client as sqlite_mod
+    except ImportError:
+        return STATUS_UNHEALTHY, "sqlite_client module not importable", 0.0
+    db_path = getattr(sqlite_mod, "DB_PATH", None)
+    if not db_path:
+        return STATUS_UNHEALTHY, "sqlite_client.DB_PATH not configured", 0.0
+
+    import sqlite3
     start = time.time()
     try:
-        # Use the existing connection to run a lightweight query
-        conn = getattr(kb_manager, "conn", None)
-        if conn is None:
-            return STATUS_UNHEALTHY, "SQLite connection not available", 0.0
-        cursor = conn.execute("SELECT 1")
-        cursor.fetchone()
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            cursor = conn.execute("SELECT 1")
+            cursor.fetchone()
+        finally:
+            conn.close()
         latency = (time.time() - start) * 1000
-
-        db_path = getattr(kb_manager, "db_path", "unknown")
         return STATUS_HEALTHY, db_path, latency
     except Exception as e:
         latency = (time.time() - start) * 1000

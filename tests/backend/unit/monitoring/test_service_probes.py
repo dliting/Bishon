@@ -1,4 +1,6 @@
 """Tests for service probes — mock network calls, verify probe results."""
+import sqlite3
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -65,6 +67,7 @@ class TestProbeLlm:
         assert success == STATUS_UNHEALTHY
         assert "Connection refused" in detail
 
+    @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_KEY", "test-key-123")
     @patch("bishon_kernel.connector.llm.llm_for_openai_api.LLM_PROVIDER", "openai")
     @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_BASE", "https://api.openai.com/v1")
     @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_MODEL_NAME", "gpt-4")
@@ -83,6 +86,29 @@ class TestProbeLlm:
         assert success == STATUS_HEALTHY
         assert "openai" in detail.lower()
         assert latency >= 0
+        # Non-ollama providers must send the API key as a Bearer token
+        _, kwargs = mock_client.get.call_args
+        assert kwargs.get("headers", {}).get("Authorization") == "Bearer test-key-123"
+
+    @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_KEY", None)
+    @patch("bishon_kernel.connector.llm.llm_for_openai_api.LLM_PROVIDER", "openai")
+    @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_BASE", "https://api.openai.com/v1")
+    @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_MODEL_NAME", "gpt-4")
+    @patch("bishon_kernel.monitoring.service_probes.httpx.Client")
+    def test_openai_sends_no_auth_without_key(self, mock_client_cls, mock_local_doc_qa):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        success, detail, latency = probe_llm(mock_local_doc_qa)
+        assert success == STATUS_HEALTHY
+        _, kwargs = mock_client.get.call_args
+        assert "Authorization" not in kwargs.get("headers", {})
 
     @patch("bishon_kernel.connector.llm.llm_for_openai_api.LLM_PROVIDER", "openai")
     @patch("bishon_kernel.connector.llm.llm_for_openai_api.OPENAI_API_BASE", "")
@@ -176,7 +202,12 @@ class TestProbeFaiss:
 
 
 class TestProbeSqlite:
-    def test_sqlite_healthy(self, mock_local_doc_qa):
+    @patch("bishon_kernel.connector.database.sqlite.sqlite_client.DB_PATH", "/tmp/test.db")
+    @patch("sqlite3.connect")
+    def test_sqlite_healthy(self, mock_connect, mock_local_doc_qa):
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchone.return_value = (1,)
+        mock_connect.return_value = mock_conn
         success, detail, latency = probe_sqlite(mock_local_doc_qa)
         assert success == STATUS_HEALTHY
         assert "/tmp/test.db" in detail
@@ -185,9 +216,12 @@ class TestProbeSqlite:
         mock_local_doc_qa.kb_manager = None
         success, detail, latency = probe_sqlite(mock_local_doc_qa)
         assert success == STATUS_UNHEALTHY
+        assert "KnowledgeBaseManager" in detail
 
-    def test_sqlite_query_error(self, mock_local_doc_qa):
-        mock_local_doc_qa.kb_manager.conn.execute.side_effect = Exception("disk error")
+    @patch("bishon_kernel.connector.database.sqlite.sqlite_client.DB_PATH", "/tmp/test.db")
+    @patch("sqlite3.connect")
+    def test_sqlite_query_error(self, mock_connect, mock_local_doc_qa):
+        mock_connect.side_effect = Exception("disk error")
         success, detail, latency = probe_sqlite(mock_local_doc_qa)
         assert success == STATUS_UNHEALTHY
         assert "disk error" in detail

@@ -69,6 +69,7 @@ tmp_files/
 # IDE / Tool config (private)
 .claude/
 CLAUDE.md
+docs/superpowers/
 
 # Internal memo (kept private; backed up outside the repo)
 docs/migration-memo.md

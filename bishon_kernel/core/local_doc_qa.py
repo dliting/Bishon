@@ -92,7 +92,14 @@ class LocalDocQA:
                 use_gpu = can_use_ocr_gpu()
                 if use_gpu:
                     import paddle
-                    paddle.device.set_device('gpu:0')
+                    if paddle.device.is_compiled_with_cuda():
+                        paddle.device.set_device('gpu:0')
+                    else:
+                        # Graceful degradation: OCR_USE_GPU=true but paddle is a
+                        # CPU build (e.g. env installed without GPU wheel). Run
+                        # OCR on CPU instead of disabling it entirely.
+                        logging.warning("[OCR] GPU requested but paddle lacks CUDA — falling back to CPU")
+                        use_gpu = False
 
                 self.ocr_engine = PaddleOCR(
                     text_detection_model_dir       = det_dir,

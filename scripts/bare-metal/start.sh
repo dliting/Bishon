@@ -2,17 +2,20 @@
 # Bishon V2 startup script (Linux / WSL).
 # Knowledge-base service — standalone launch.
 #
-# Usage: bash start.sh [--source-dir <path>]
+# Usage: bash start.sh [--source-dir <path>] [--daemon]
 #   --source-dir defaults to the project root (two levels up from this script).
+#   --daemon      run in background (setsid nohup), log to <source-dir>/logs/backend.log
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEFAULT_SOURCE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SOURCE_DIR="$DEFAULT_SOURCE_DIR"
+DAEMON=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --source-dir) SOURCE_DIR="$2"; shift 2 ;;
+        --daemon) DAEMON=true; shift ;;
         -h|--help) sed -n '2,6p' "$0"; exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
@@ -79,4 +82,12 @@ echo "    问答:  tail -f logs/qa_logs/qa.log"
 echo ""
 echo "  停止: Ctrl+C 或 kill \$(fuser 8777/tcp 2>/dev/null)"
 echo ""
-exec uvicorn bishon_kernel.bishon_server.app:app --host 0.0.0.0 --port 8777 --log-level info
+if $DAEMON; then
+    mkdir -p logs
+    setsid nohup uvicorn bishon_kernel.bishon_server.app:app --host 0.0.0.0 --port 8777 --log-level info \
+        > logs/backend.log 2>&1 < /dev/null &
+    echo "[INFO] Backend started in background (pid $!). Logs: logs/backend.log"
+    echo "[INFO] Stop: kill $(pgrep -f 'uvicorn bishon_kernel' | head -1)"
+else
+    exec uvicorn bishon_kernel.bishon_server.app:app --host 0.0.0.0 --port 8777 --log-level info
+fi

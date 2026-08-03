@@ -1,5 +1,30 @@
 """GPU detection utilities: config + availability. Single entry point for all GPU-aware components."""
+import ctypes
+import logging
 import os
+
+logger = logging.getLogger(__name__)
+
+
+def preload_cublaslt():
+    """Preload libcublasLt before faiss imports.
+
+    libcublas.so.12 (CUDA 12.5+) depends on cublasLtGetEnvironmentMode from
+    libcublasLt.so.12, but the loader may resolve them in the wrong order.
+    Without this, ``import faiss`` fails with
+    "undefined symbol: cublasLtGetEnvironmentMode".
+    """
+    try:
+        import nvidia.cublas.lib as cublas_dir
+        cublaslt_path = os.path.join(os.path.dirname(cublas_dir.__file__), "libcublasLt.so.12")
+        if os.path.exists(cublaslt_path):
+            ctypes.CDLL(cublaslt_path, mode=ctypes.RTLD_GLOBAL)
+    except (ImportError, OSError) as e:
+        logger.warning("libcublasLt preload skipped: %s", e)
+
+
+# Run at import time so any subsequent ``import faiss`` succeeds.
+preload_cublaslt()
 
 # .env is loaded centrally by bishon_kernel.configs.model_config; do not reload here.
 

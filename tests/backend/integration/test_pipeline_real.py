@@ -1,6 +1,6 @@
-"""Real-service pipeline tests — requires Ollama (embedding + LLM).
+"""Real-service pipeline tests — requires OpenAI-compatible LLM + Embedding services.
 
-Auto-skipped when Ollama is unavailable.
+Auto-skipped when either service is unavailable.
 Run with: python -m pytest tests/backend/integration/test_pipeline_real.py -v
 """
 import os
@@ -11,26 +11,44 @@ import pytest
 from httpx import ASGITransport
 
 
-def _ollama_available():
-    """Check whether the Ollama service is available."""
+def _openai_service_available(base_url: str) -> bool:
+    """Check whether an OpenAI-compatible service is reachable at *base_url*."""
+    import urllib.request
+    url = base_url.rstrip("/")
+    if not url.endswith("/models"):
+        url += "/models"
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
     try:
-        import urllib.request
-        req = urllib.request.Request("http://localhost:11434/", method="GET")
-        urllib.request.urlopen(req, timeout=3)
+        req = urllib.request.Request(url, method="GET")
+        urllib.request.urlopen(req, timeout=5)
         return True
     except Exception:
         return False
 
 
-requires_ollama = pytest.mark.skipif(
-    not _ollama_available(),
-    reason="Ollama service not running on localhost:11434"
+def _inference_services_available():
+    """Check whether both LLM and Embedding services are up (per .env config)."""
+    from bishon_kernel.configs.model_config import root_path
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(root_path, '.env'))
+    llm_base       = os.getenv("OPENAI_API_BASE", "http://localhost:8000/v1")
+    embedding_base = os.getenv("EMBEDDING_API_BASE", "http://localhost:8001/v1/embeddings")
+    # Strip trailing /embeddings for the health check
+    if embedding_base.endswith("/embeddings"):
+        embedding_base = embedding_base[:-len("/embeddings")]
+    return _openai_service_available(llm_base) and _openai_service_available(embedding_base)
+
+
+requires_inference = pytest.mark.skipif(
+    not _inference_services_available(),
+    reason="LLM or Embedding service not available (per .env OPENAI_API_BASE / EMBEDDING_API_BASE)"
 )
 
 
 @pytest.fixture
 async def real_api_client(tmp_path, monkeypatch):
-    """API client with real Embedding/LLM (Ollama) + temporary SQLite/FAISS."""
+    """API client with real Embedding/LLM services + temporary SQLite/FAISS."""
     import bishon_kernel.connector.database.faiss.faiss_client as faiss_mod
     import bishon_kernel.connector.database.sqlite.sqlite_client as sqlite_mod
     from bishon_kernel.bishon_server.app import app
@@ -94,7 +112,7 @@ async def real_api_client(tmp_path, monkeypatch):
         app.state.monitor_store = original_monitor_store
 
 
-@requires_ollama
+@requires_inference
 class TestRealUploadPipeline:
     """Test: upload file -> parse -> embedding -> status turns green."""
 
@@ -148,7 +166,7 @@ class TestRealUploadPipeline:
         assert upload_resp.json()["code"] == 200
 
 
-@requires_ollama
+@requires_inference
 class TestRealChatPipeline:
     """Test: upload file -> chat -> get a real LLM answer."""
 

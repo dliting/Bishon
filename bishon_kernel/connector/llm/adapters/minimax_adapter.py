@@ -30,6 +30,10 @@ class MiniMaxAdapter(OpenAIAdapter):
         return THINK_STRIP_RE.sub('', text).strip()
 
     def _extract_content_nonstream(self, response) -> str:
+        # Parent may return reasoning text when content is empty (Qwen3.5 fallback).
+        # For MiniMax with reasoning_split=True, content is always populated, so this
+        # fallback rarely triggers. If it does, _strip_thinking_tags is a no-op on
+        # reasoning text (no <think> tags), which is acceptable.
         text = super()._extract_content_nonstream(response)
         return self._strip_thinking_tags(text)
 

@@ -36,9 +36,15 @@ source "$LIB_DIR/frontend_rebuild.sh"
 
 # --- 3. Run setup steps in order --------------------------------------------
 bind_python_env           # existing: symlink python-env into miniconda3 path
-redirect_runtime_dirs     # existing: redirect BISHON_DB + logs to host-dir top
-bind_node_env             # NEW: no-op if $DATA_ROOT/node-env/ missing
-maybe_rebuild_frontend    # NEW: no-op if Node not bound
+redirect_runtime_dirs     # redirect BISHON_DB + logs to host-dir top
+bind_node_env             # no-op if $DATA_ROOT/node-env/ missing
+maybe_rebuild_frontend    # no-op if Node not bound
+
+# Set models directory and tiktoken cache for offline deployment.
+# MODELS_DIR tells model_config.py where to find model files;
+# in Docker mode this is the host-dir models/ (not inside bishon/ source).
+export MODELS_DIR=$DATA_ROOT/models
+export TIKTOKEN_CACHE_DIR=$DATA_ROOT/models/tiktoken_cache
 
 # --- 4. Launch uvicorn ------------------------------------------------------
 PY="/opt/miniconda3/envs/bishon/bin/python"

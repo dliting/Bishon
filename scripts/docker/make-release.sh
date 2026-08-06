@@ -143,7 +143,13 @@ else
         --exclude '__pycache__' \
         --exclude '*.pyc' \
         --exclude '*.pyo' \
+        --exclude 'nvidia/cu13' \
+        --exclude 'vllm' \
+        --exclude 'spacy' \
+        --exclude 'en_core_web*' \
+        --exclude 'unstructured' \
         "$ENV_SRC/" "$DIST/python-env/"
+    log "python-env staged (~$(du -sh "$DIST/python-env" | cut -f1))"
 fi
 
 # --- 3. Source code (MANIFEST-driven) ----------------------------------------
@@ -296,6 +302,16 @@ else
     log "copying models (~$(du -sh "$REPO_ROOT/models" 2>/dev/null | cut -f1 || echo '?'))"
     mkdir -p "$DIST/models"
     rsync -a --exclude '.git' "$REPO_ROOT/models/" "$DIST/models/"
+
+    # Pre-generate tiktoken cache for offline deployment.
+    # tiktoken downloads encoding files on first use; without internet
+    # this fails silently and breaks document processing.
+    log "pre-generating tiktoken cache for offline deployment"
+    mkdir -p "$DIST/models/tiktoken_cache"
+    TIKTOKEN_CACHE_DIR="$DIST/models/tiktoken_cache" \
+        "$ENV_SRC/bin/python" -c "import tiktoken; tiktoken.get_encoding('cl100k_base')" \
+        2>/dev/null && log "  tiktoken cl100k_base cached ($(du -sh "$DIST/models/tiktoken_cache" | cut -f1))" \
+        || log "  WARNING: tiktoken cache generation failed (offline may break)"
     log "creating $MODELS_TGZ"
     tar -czf "$MODELS_TGZ" -C "$DIST" models
     (cd "$(dirname "$MODELS_TGZ")" && sha256sum "$(basename "$MODELS_TGZ")" > "$(basename "$MODELS_TGZ").sha256")
@@ -323,6 +339,96 @@ cp "$REPO_ROOT/run_all_tests.sh"        "$DIST/"
 
 cp "$REPO_ROOT/.env.example" "$DIST/"
 cp "$REPO_ROOT/VERSION" "$DIST/"
+
+# Generate README.md with file inventory and quick-start instructions.
+BUILD_DATE="$(date +%Y-%m-%d)"
+cat > "$DIST/README.md" <<EOREADME
+# Bishon V2 离线部署包
+
+版本: $VERSION
+构建日期: $BUILD_DATE
+
+## 文件清单
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| \`bishon-cuda-image-$VERSION.tar\` | ~3.1G | Docker 镜像 (CUDA 12.6 + Ubuntu 22.04 + Miniconda) |
+| \`bishon-release-$VERSION.tar.gz\` | ~7G | Python 运行环境 + Bishon 源码 + 前端 + 部署脚本 |
+| \`bishon-models-$VERSION.tar.gz\` | ~1G | Reranker + OCR 模型权重 |
+| \`bishon-node-$VERSION.tar.gz\` | ~160M | Node.js + 前端依赖 (可选, 用于前端热重建) |
+| \`*.sha256\` | — | 各文件 SHA256 校验 |
+| \`deploy.sh\` | — | 部署入口脚本 (交互式向导) |
+| \`VERSION\` | — | 版本号 |
+
+## 环境要求
+
+- **OS**: Ubuntu 22.04 (WSL2 或原生 Linux)
+- **GPU**: NVIDIA GPU + CUDA 12.6 驱动 + NVIDIA Container Toolkit
+- **Docker**: 20.10+
+- **磁盘**: >= 40G 可用空间 (ext4 文件系统, 不能是 9p/NTFS 挂载)
+- **推理服务**: OpenAI 兼容的 LLM + Embedding 服务 (vLLM / Ollama 等)
+
+## 快速部署
+
+\`\`\`bash
+# 1. 将整个目录拷贝到目标机器
+scp -r release-$VERSION/ user@target:/opt/bishon-deploy/
+
+# 2. 在目标机器上运行部署向导
+cd /opt/bishon-deploy/release-$VERSION/
+bash deploy.sh
+\`\`\`
+
+## 非交互式部署 (自动化/CI)
+
+\`\`\`bash
+bash deploy.sh --non-interactive \\
+  --mode docker-offline \\
+  --host-dir /opt/bishon-data \\
+  --release bishon-release-$VERSION.tar.gz \\
+  --image bishon-cuda-image-$VERSION.tar \\
+  --models bishon-models-$VERSION.tar.gz
+\`\`\`
+
+## 推理服务配置
+
+Bishon 通过 \`.env\` 中的以下变量连接推理服务 (部署后在 host-dir 中编辑):
+
+\`\`\`bash
+# LLM (OpenAI 兼容 API)
+OPENAI_API_BASE=http://localhost:8000/v1       # vLLM / Ollama 地址
+OPENAI_API_MODEL_NAME=Qwen3.5-4B
+
+# Embedding
+EMBEDDING_API_BASE=http://localhost:8001/v1/embeddings
+EMBEDDING_MODEL_NAME=Qwen3-Embedding-0.6B
+\`\`\`
+
+> Docker 模式下推理服务运行在宿主机时, 需将 \`localhost\` 改为 \`host.docker.internal\`。
+
+## 常用操作
+
+\`\`\`bash
+# 启动
+bash start-docker.sh --host-dir /opt/bishon-data
+
+# 停止
+bash stop-docker.sh --host-dir /opt/bishon-data
+
+# 查看日志
+docker logs -f bishon
+
+# 健康检查
+curl http://localhost:8777/api/health
+\`\`\`
+
+## 校验文件完整性
+
+\`\`\`bash
+for f in *.sha256; do sha256sum -c "\$f"; done
+\`\`\`
+EOREADME
+log "generated README.md"
 
 # --- 6. Main tarball ---------------------------------------------------------
 # Write the tarball outside $DIST/ then mv it in, so tar doesn't see its own

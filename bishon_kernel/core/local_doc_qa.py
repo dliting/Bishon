@@ -63,9 +63,9 @@ class LocalDocQA:
         self.rerank_backend = LocalRerankBackend()
 
         # PaddleOCR in-process initialization (PaddleOCR 3.x API).
-        # Model files live under the project directory for offline deployment.
-        from bishon_kernel.configs.model_config import root_path
-        ocr_model_dir = os.path.join(root_path, 'models', 'paddleocr_models')
+        # Model files live under the models directory for offline deployment.
+        from bishon_kernel.configs.model_config import models_dir
+        ocr_model_dir = os.path.join(models_dir, 'paddleocr_models')
 
         det_dir    = os.path.join(ocr_model_dir, 'det')
         rec_dir    = os.path.join(ocr_model_dir, 'rec')

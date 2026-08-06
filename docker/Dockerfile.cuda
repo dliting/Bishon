@@ -23,7 +23,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # System libs required by torch / paddlepaddle / paddleocr / opencv at runtime.
 # fonts-noto-cjk needed for OCR on Chinese text.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Use Aliyun mirror for faster apt downloads from China.
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libgl1 \
         libglib2.0-0 \

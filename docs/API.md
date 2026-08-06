@@ -405,7 +405,7 @@ curl -X POST http://localhost:8777/api/local_doc_qa/rename_knowledge_base \
 
 `GET /api/local_doc_qa/download_file/{file_id}`
 
-通过 `file_id` 下载原始上传文件。浏览器根据 Content-Type 自动决定预览或下载。
+通过 `file_id` 下载原始上传文件。响应包含 `Content-Disposition: attachment` 头，浏览器将触发下载而非内联预览。
 URL 类型的来源文档（通过 upload_weblink 上传）返回 302 重定向到原始 URL。
 
 ### 路径参数
@@ -417,7 +417,7 @@ URL 类型的来源文档（通过 upload_weblink 上传）返回 302 重定向�
 ### curl 示例
 
 ```bash
-# 下载文件（浏览器支持的格式会自动预览）
+# 下载文件（浏览器将触发下载）
 curl -O http://localhost:8777/api/local_doc_qa/download_file/a1b2c3d4e5f6...
 
 # URL 类型文件会返回 302 重定向
@@ -426,7 +426,7 @@ curl -v http://localhost:8777/api/local_doc_qa/download_file/abcdef1234567890...
 
 ### 响应
 
-- **文件类型**: 返回文件内容（Content-Type 根据文件扩展名自动设置）
+- **文件类型**: 返回文件内容（Content-Type 根据文件扩展名自动设置，Content-Disposition: attachment 触发下载）
 - **URL 类型**: 返回 302 重定向到原始 URL
 
 ### 错误响应

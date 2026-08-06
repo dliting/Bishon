@@ -86,7 +86,7 @@ async def health_check(request: Request):
 
 @router.get("/local_doc_qa/download_file/{file_id}")
 async def download_file(file_id: str, request: Request):
-    """Download the original file by file_id; the browser previews or downloads it. URL-type files return a 302 redirect."""
+    """Download the original file by file_id; the browser downloads it. URL-type files return a 302 redirect."""
     local_doc_qa = _get_local_doc_qa(request)
     debug_logger.info("download_file %s", file_id)
 
@@ -104,7 +104,7 @@ async def download_file(file_id: str, request: Request):
     if file_name and file_name.startswith("http"):
         return RedirectResponse(url=file_name, status_code=302)
 
-    if '..' in file_name or '/' in file_name or '\\' in file_name:
+    if not file_name or '..' in file_name or '/' in file_name or '\\' in file_name:
         return JSONResponse({"code": CODE_FILE_NOT_FOUND, "msg": "invalid file name"}, status_code=404)
 
     from bishon_kernel.configs.model_config import UPLOAD_ROOT_PATH
@@ -112,7 +112,7 @@ async def download_file(file_id: str, request: Request):
     if not os.path.isfile(file_path):
         return JSONResponse({"code": CODE_FILE_NOT_FOUND, "msg": "file not found on disk"}, status_code=404)
 
-    return FileResponse(file_path)
+    return FileResponse(file_path, filename=file_name)
 
 
 @router.get("/docs")

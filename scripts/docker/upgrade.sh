@@ -7,6 +7,7 @@
 # Atomically replaces (with timestamped backup, then deletes the backup):
 #   - bishon/           (source code)
 #   - models/           (model weights)
+#   - scripts/          (deploy scripts: start.sh, stop.sh, etc.)
 #   - python-env/       (only if the new tarball contains one — rare)
 #
 # NEVER touched:
@@ -30,12 +31,12 @@ while [[ $# -gt 0 ]]; do
         --node)     NODE_TAR="$2";    shift 2 ;;
         -h|--help)
             cat <<EOF
-upgrade.sh — Upgrade code/models on an installed host (in place).
+upgrade.sh — Upgrade code/models/scripts on an installed host (in place).
 
-Atomically replaces bishon/ (source) and models/ in <host-dir> from a new
-release tarball, then optionally python-env/ if the new tarball carries one.
-Optionally replaces node-env/ via --node. Never touches .env, BISHON_DB/,
-logs/, .image-tag, .accelerator.
+Atomically replaces bishon/ (source), models/, and scripts/ in <host-dir>
+from a new release tarball, then optionally python-env/ if the new tarball
+carries one. Optionally replaces node-env/ via --node. Never touches .env,
+BISHON_DB/, logs/, .image-tag, .accelerator.
 
 After publish, restart the container: stop.sh && start.sh.
 
@@ -95,10 +96,15 @@ tar -xzf "$RELEASE_TAR" -C "$TMP_DIR"
 # These are information-only (consumed by the summary printout at the bottom).
 [ -d "$TMP_DIR/bishon" ]     && REPLACED_BISHON="yes" || REPLACED_BISHON="no"
 [ -d "$TMP_DIR/models" ]     && REPLACED_MODELS="yes" || REPLACED_MODELS="no"
+[ -d "$TMP_DIR/scripts" ]    && REPLACED_SCRIPTS="yes" || REPLACED_SCRIPTS="no"
 [ -d "$TMP_DIR/python-env" ] && REPLACED_BISHON_ENV="yes" || REPLACED_BISHON_ENV="no (not in tarball)"
 
 # Atomic replace helper: mv current aside, mv new in, then delete the backup.
 # Caller must check existence of $TMP_DIR/$name first; we assert here.
+# The backup delete is best-effort: __pycache__ files created by root inside
+# Docker may be undeletable by the current user. Log a warning and move on —
+# the old backup is harmless (just takes up space) and can be cleaned up later
+# with sudo.
 replace_dir() {
     local name="$1"
     local new="$TMP_DIR/$name"
@@ -107,25 +113,34 @@ replace_dir() {
     [ -d "$new" ] || return 0
     [ -d "$cur" ] && mv "$cur" "$old"
     mv "$new" "$cur"
-    rm -rf "$old"
-    log "replaced $name/"
+    if ! rm -rf "$old" 2>/dev/null; then
+        log "replaced $name/ (WARNING: could not delete backup $old — leftover __pycache__ with root ownership. Clean up with: sudo rm -rf $old)"
+    else
+        log "replaced $name/"
+    fi
 }
 
 replace_dir "bishon"
 replace_dir "models"
+replace_dir "scripts"
 [ "$REPLACED_BISHON_ENV" = "yes" ] && {
     replace_dir "python-env"
     log "NOTE: python-env replaced. If the image's miniconda3 base version"
     log "      changed since install, rebuild the image too."
 }
 
-# CRLF guard for freshly-extracted bishon/docker/*.sh — same rationale as install.sh.
+# CRLF guard for freshly-extracted shell scripts — same rationale as install.sh.
 if [ -d "$HOST_DIR/bishon/docker" ]; then
     log "normalizing line endings on bishon/docker/**/*.sh"
     find "$HOST_DIR/bishon/docker" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
     chmod +x "$HOST_DIR/bishon/docker/"*.sh 2>/dev/null || true
     [ -d "$HOST_DIR/bishon/docker/entrypoint_lib" ] && \
         chmod +x "$HOST_DIR/bishon/docker/entrypoint_lib/"*.sh 2>/dev/null || true
+fi
+if [ -d "$HOST_DIR/scripts" ]; then
+    log "normalizing line endings on scripts/**/*.sh"
+    find "$HOST_DIR/scripts" -name '*.sh' -type f -exec sed -i 's/\r$//' {} +
+    chmod +x "$HOST_DIR/scripts/docker/"*.sh "$HOST_DIR/scripts/bare-metal/"*.sh "$HOST_DIR/scripts/common/"*.sh 2>/dev/null || true
 fi
 
 # --- Node toolchain (optional, atomic replace) -------------------------------
@@ -152,6 +167,7 @@ cat <<EOF
 What was replaced:
    bishon/         $REPLACED_BISHON
    models/         $REPLACED_MODELS
+   scripts/        $REPLACED_SCRIPTS
    python-env/     $REPLACED_BISHON_ENV
    node-env/       $NODE_REPLACED
 

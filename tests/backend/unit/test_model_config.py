@@ -64,3 +64,9 @@ class TestResolveModelPath:
         from bishon_kernel.configs.model_config import models_dir
         result = self.resolve("./models/paddleocr_models/det")
         assert result == os.path.join(models_dir, "paddleocr_models", "det")
+
+    def test_dot_prefixed_model_name_preserved(self):
+        """Dot-prefixed model name like '.hidden-model' should not lose its dot."""
+        from bishon_kernel.configs.model_config import models_dir
+        result = self.resolve(".hidden-model")
+        assert result == os.path.join(models_dir, ".hidden-model")

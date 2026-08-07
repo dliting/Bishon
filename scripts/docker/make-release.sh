@@ -133,10 +133,9 @@ mkdir -p "$DIST"
 # --- 2. python-env (one env, slim) — skip with --skip-env ------------------
 if $SKIP_ENV; then
     log "skipping python-env (--skip-env)"
-    mkdir -p "$DIST/python-env"
-    # Sentinel: install.sh checks for bin/ first; if missing, looks for this
-    # file to confirm the tarball is intentionally source-only.
-    echo "source-only release; python-env not included" > "$DIST/python-env/.skip-env"
+    # Clean up stale python-env from a previous full run (with --force).
+    # Without this, the old directory would be included in the tarball.
+    [ -d "$DIST/python-env" ] && rm -rf "$DIST/python-env"
 else
     log "copying python-env (~$(du -sh "$ENV_SRC" | cut -f1))"
     rsync -a \

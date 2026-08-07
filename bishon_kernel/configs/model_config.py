@@ -36,9 +36,13 @@ def resolve_model_path(raw_path: str) -> str:
     """
     if os.path.isabs(raw_path):
         return raw_path
-    # Strip leading "./" and "models/" prefix that was needed before
-    # MODELS_DIR was introduced.  Old: "./models/X" or "models/X" → "X".
-    cleaned = raw_path.lstrip("./")
+    # Strip leading "./" prefix that was needed before MODELS_DIR was introduced.
+    # Old: "./models/X" or "models/X" → "X".
+    # Use explicit prefix checks (not lstrip) to avoid stripping dot-prefixed
+    # model names like ".hidden-model".
+    cleaned = raw_path
+    while cleaned.startswith("./"):
+        cleaned = cleaned[2:]
     if cleaned.startswith("models/") or cleaned.startswith("models\\"):
         cleaned = cleaned[len("models/"):].lstrip("/\\")
     return os.path.join(models_dir, cleaned)

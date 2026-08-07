@@ -153,13 +153,13 @@ ls dist/
 
 **BISHON_DB / logs 路径重定向**（关键）：`model_config.py` / `faiss_client.py` / `custom_log.py` 都通过 `root_path` 拼接路径，所以 SQLite 元数据 (`BISHON_DB/metadata.db`)、FAISS 索引 (`BISHON_DB/faiss/`)、上传内容 (`BISHON_DB/content/`)、日志 (`logs/{debug,qa}_logs/`) 默认都落在 `root_path/` 即源码目录里。如果不重定向，部署侧会出两个问题：
 
-1. **publish 升级时数据被覆盖**：`upgrade.sh` 原子替换 `bishon/`，源码目录里的 BISHON_DB 会被一起抹掉。
+1. **upgrade 升级时数据被覆盖**：旧版 `upgrade.sh` 原子替换 `bishon/`，源码目录里的 BISHON_DB 会被一起抹掉。新版改为 overlay 方式（`cp -a` 覆盖），保留运行时数据。
 2. **WSL 测试场景触发避坑指南 #2**：若宿主侧 `bishon/` 路径在 NTFS 上（如 `/mnt/i/...` 经 9p/drvfs），SQLite WAL 会因 mmap/shm 不支持而 I/O 错误。
 
 `entrypoint.sh` 在启动 uvicorn 之前，对 `bishon/BISHON_DB` 与 `bishon/logs` 创建符号链接到 `/opt/bishon-data/BISHON_DB` 与 `/opt/bishon-data/logs`（与源码目录同级）。这样：
 
 - 应用代码读 `root_path/BISHON_DB/metadata.db` → 实际落盘 `/opt/bishon-data/BISHON_DB/metadata.db`（持久化、publish-safe、ext4）；
-- 第一次启动自动创建符号链接；**publish 升级会清掉 `bishon/` 内的符号链接，下次 start 由 entrypoint 重新创建**——这是预期行为，因为 `bishon/` 是可替换的源码层；
+- 第一次启动自动创建符号链接；**upgrade 升级用 overlay 方式（`cp -a` 覆盖），符号链接会被保留**——因为 tarball 中不含 BISHON_DB/logs 目录，`cp -a` 不会覆盖已有的符号链接；
 - 若源码目录里已存在非空的真实 BISHON_DB/logs（异常情况），entrypoint 拒绝启动并提示迁移，避免数据丢失。
 
 ## 前置条件
@@ -314,7 +314,7 @@ bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
 bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
-`upgrade.sh` 原子替换 `bishon/`、`models/`（若新包内有 `python-env/` 也替换），**永远不动**：
+`upgrade.sh` 用 overlay 方式（`cp -a` 覆盖）更新 `bishon/`、`models/`、`scripts/`（若新包内有 `python-env/` 也覆盖），**永远不动**：
 
 - `.env`（用户配置）
 - `BISHON_DB/`（运行时数据）
@@ -345,7 +345,7 @@ bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
 bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
-`upgrade.sh --node` 原子替换 `$HOST_DIR/node-env/`，**不动镜像、不动 bishon 源码**。容器重启后 entrypoint 会自动重新绑定 Node 工具链。
+`upgrade.sh --node` 替换 `$HOST_DIR/node-env/`（swap 方式，无运行时数据需保留），**不动镜像、不动 bishon 源码**。容器重启后 entrypoint 会自动重新绑定 Node 工具链。
 
 ## 前端热重构（容器启动按需 `npm run build`）
 

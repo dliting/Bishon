@@ -50,7 +50,10 @@ conda activate bishon || {
 # Ensure log directories exist.
 mkdir -p logs/debug_logs logs/qa_logs BISHON_DB/faiss BISHON_DB/content
 
-# Pre-set tiktoken cache directory so offline deployments work.
+# Pre-set models directory and tiktoken cache for offline deployment.
+# These are also set by Docker entrypoint.sh; bare-metal mode sets them
+# explicitly for symmetry and robustness (not relying on model_config.py fallback).
+export MODELS_DIR="$SOURCE_DIR/models"
 export TIKTOKEN_CACHE_DIR="$SOURCE_DIR/models/tiktoken_cache"
 
 # Install dependencies (first run only).

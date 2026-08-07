@@ -4,11 +4,15 @@
 # Usage:
 #   bash upgrade.sh --host-dir <dir> --release <new-release.tar.gz>
 #
-# Atomically replaces (with timestamped backup, then deletes the backup):
+# Overlays new files on top of existing directories (with timestamped backup):
 #   - bishon/           (source code)
 #   - models/           (model weights)
 #   - scripts/          (deploy scripts: start.sh, stop.sh, etc.)
 #   - python-env/       (only if the new tarball contains one — rare)
+#
+# Overlay preserves runtime data (BISHON_DB symlinks, __pycache__, logs)
+# that is NOT in the release tarball. Stale source files from old versions
+# may remain but are harmless.
 #
 # NEVER touched:
 #   - .env              (user config)
@@ -16,7 +20,7 @@
 #   - logs/             (runtime logs)
 #   - .image-tag, .accelerator
 #
-# After publish, restart the container: stop.sh && start.sh.
+# After upgrade, restart the container: stop.sh && start.sh.
 
 set -euo pipefail
 
@@ -33,12 +37,13 @@ while [[ $# -gt 0 ]]; do
             cat <<EOF
 upgrade.sh — Upgrade code/models/scripts on an installed host (in place).
 
-Atomically replaces bishon/ (source), models/, and scripts/ in <host-dir>
-from a new release tarball, then optionally python-env/ if the new tarball
-carries one. Optionally replaces node-env/ via --node. Never touches .env,
-BISHON_DB/, logs/, .image-tag, .accelerator.
+Overlays new files on top of existing directories in <host-dir> from a new
+release tarball. Preserves runtime data (BISHON_DB, logs, __pycache__).
+Optionally overlays python-env/ if the new tarball carries one. Optionally
+replaces node-env/ via --node. Never touches .env, BISHON_DB/, logs/,
+.image-tag, .accelerator.
 
-After publish, restart the container: stop.sh && start.sh.
+After upgrade, restart the container: stop.sh && start.sh.
 
 USAGE
   bash $0 --host-dir <dir> --release <new-release.tar.gz> [--node <node-tar>]
@@ -66,7 +71,7 @@ EOF
     esac
 done
 
-export BISHON_LOG_TAG=publish
+export BISHON_LOG_TAG=upgrade
 # shellcheck source=../common/utils.sh
 source "$(dirname "$0")/../common/utils.sh"
 
@@ -77,16 +82,25 @@ die() { bishon_die "$@"; }
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
 [ -z "$NODE_TAR" ] || [ -f "$NODE_TAR" ] || die "node tar not found: $NODE_TAR"
 [ -d "$HOST_DIR/bishon" ] || die "$HOST_DIR does not look installed (no bishon/ subdir). Run install.sh first."
-# Fail fast if other install artifacts are missing — publish cannot repair
+# Fail fast if other install artifacts are missing — upgrade cannot repair
 # them, and continuing would let start.sh fail later with a confusing
 # 'python-env/bin missing' or '.image-tag missing' error.
 [ -f "$HOST_DIR/.image-tag" ]     || die "$HOST_DIR/.image-tag missing. Was install.sh ever run?"
-[ -d "$HOST_DIR/python-env/bin" ] || die "$HOST_DIR/python-env/bin missing. Publish cannot repair a broken env; re-run install.sh."
+[ -d "$HOST_DIR/python-env/bin" ] || die "$HOST_DIR/python-env/bin missing. Upgrade cannot repair a broken env; re-run install.sh."
 
 HOST_DIR="$(readlink -f "$HOST_DIR")"
 TS="$(date +%Y%m%d-%H%M%S)"
+
+# Pre-flight: check available disk space. The overlay approach backs up each
+# directory before overlaying, so peak usage = current size + backup size +
+# tarball extraction. On a 40 GB minimum disk this can be tight.
+avail_gb="$(df -P "$HOST_DIR" | awk 'NR==2 {printf "%.0f", $4/1024/1024}')"
+if [ "$avail_gb" -lt 5 ]; then
+    die "Only ${avail_gb} GB free on $HOST_DIR — need at least 5 GB for upgrade backup. Free space or use a src-only release."
+fi
+
 # Same-FS mktemp so `mv` is atomic (see install.sh for rationale).
-TMP_DIR="$(mktemp -d -p "$HOST_DIR" .tmp.publish.XXXXXX)"
+TMP_DIR="$(mktemp -d -p "$HOST_DIR" .tmp.upgrade.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 log "extracting $RELEASE_TAR ..."
@@ -97,37 +111,65 @@ tar -xzf "$RELEASE_TAR" -C "$TMP_DIR"
 [ -d "$TMP_DIR/bishon" ]     && REPLACED_BISHON="yes" || REPLACED_BISHON="no"
 [ -d "$TMP_DIR/models" ]     && REPLACED_MODELS="yes" || REPLACED_MODELS="no"
 [ -d "$TMP_DIR/scripts" ]    && REPLACED_SCRIPTS="yes" || REPLACED_SCRIPTS="no"
-[ -d "$TMP_DIR/python-env" ] && REPLACED_BISHON_ENV="yes" || REPLACED_BISHON_ENV="no (not in tarball)"
+[ -d "$TMP_DIR/python-env" ] && REPLACED_BISHON_ENV="yes" || REPLACED_BISHON_ENV="no"
 
-# Atomic replace helper: mv current aside, mv new in, then delete the backup.
-# Caller must check existence of $TMP_DIR/$name first; we assert here.
-# The backup delete is best-effort: __pycache__ files created by root inside
-# Docker may be undeletable by the current user. Log a warning and move on —
-# the old backup is harmless (just takes up space) and can be cleaned up later
-# with sudo.
+# Directory replace helper:
+#   1. Back up current directory (full copy, preserves all runtime data)
+#   2. Overlay new files on top of current directory (cp -a)
+#
+# Why overlay (cp into existing) instead of swap (mv away, mv new in):
+#   - Runtime data lives inside bishon/ as symlinks (BISHON_DB, logs) and
+#     caches (__pycache__).  These are NOT in the release tarball.
+#   - Overlay preserves them: new source files overwrite old ones, runtime
+#     data stays because the tarball doesn't contain files with those names.
+#   - Swap would require a "restore runtime data" step that's fragile —
+#     any missed data type would be lost.
+#   - Stale source files from old versions may remain, but they are harmless.
+#
+# Backups are cleaned up best-effort at the end.  Root-owned __pycache__
+# files may prevent deletion — such backups are reported with a sudo command.
 replace_dir() {
     local name="$1"
     local new="$TMP_DIR/$name"
     local cur="$HOST_DIR/$name"
     local old="$HOST_DIR/$name.old.$TS"
     [ -d "$new" ] || return 0
-    [ -d "$cur" ] && mv "$cur" "$old"
-    mv "$new" "$cur"
-    if ! rm -rf "$old" 2>/dev/null; then
-        log "replaced $name/ (WARNING: could not delete backup $old — leftover __pycache__ with root ownership. Clean up with: sudo rm -rf $old)"
-    else
-        log "replaced $name/"
+
+    # Step 1: Full backup of current directory.
+    if [ -d "$cur" ]; then
+        cp -a "$cur" "$old"
+        STALE_BACKUPS+=("$old")
     fi
+
+    # Step 2: Overlay new files on top of current directory.
+    # cp -a preserves permissions, symlinks, and timestamps.
+    # Files in the tarball overwrite old ones; files NOT in the tarball
+    # (runtime symlinks, __pycache__) are preserved.
+    cp -a "$new/." "$cur/"
+
+    log "replaced $name/"
 }
+
+STALE_BACKUPS=()
+STALE_FAILED=()
 
 replace_dir "bishon"
 replace_dir "models"
 replace_dir "scripts"
+replace_dir "python-env"
 [ "$REPLACED_BISHON_ENV" = "yes" ] && {
-    replace_dir "python-env"
     log "NOTE: python-env replaced. If the image's miniconda3 base version"
     log "      changed since install, rebuild the image too."
 }
+
+# --- Best-effort cleanup of old backups --------------------------------------
+# __pycache__ files created by root inside Docker may be undeletable by the
+# current user.  Collect the ones we can't remove and tell the operator.
+for old_dir in "${STALE_BACKUPS[@]+"${STALE_BACKUPS[@]}"}"; do
+    if ! rm -rf "$old_dir" 2>/dev/null; then
+        STALE_FAILED+=("$old_dir")
+    fi
+done
 
 # CRLF guard for freshly-extracted shell scripts — same rationale as install.sh.
 if [ -d "$HOST_DIR/bishon/docker" ]; then
@@ -143,10 +185,9 @@ if [ -d "$HOST_DIR/scripts" ]; then
     chmod +x "$HOST_DIR/scripts/docker/"*.sh "$HOST_DIR/scripts/bare-metal/"*.sh "$HOST_DIR/scripts/common/"*.sh 2>/dev/null || true
 fi
 
-# --- Node toolchain (optional, atomic replace) -------------------------------
-# --node <tar> extracts bishon-node-<ver>.tar.gz and atomically replaces
-# $HOST_DIR/node-env/. Use to upgrade Node.js or npm packages without
-# rebuilding the docker image or re-running install.sh.
+# --- Node toolchain (optional, swap replace) ----------------------------------
+# --node <tar> replaces $HOST_DIR/node-env/ entirely. Unlike bishon/, node-env
+# has no runtime data to preserve, so swap (mv) is simpler and cleaner.
 NODE_REPLACED="not requested"
 if [ -n "$NODE_TAR" ]; then
     log "upgrading node-env from $NODE_TAR"
@@ -156,13 +197,15 @@ if [ -n "$NODE_TAR" ]; then
     OLD_NODE="$HOST_DIR/node-env.old.$TS"
     [ -d "$HOST_DIR/node-env" ] && mv "$HOST_DIR/node-env" "$OLD_NODE"
     mv "$TMP_NODE/node-env" "$HOST_DIR/node-env"
-    rm -rf "$TMP_NODE" "$OLD_NODE"
+    rm -rf "$TMP_NODE"
+    # Best-effort cleanup of old node-env backup.
+    [ -d "$OLD_NODE" ] && rm -rf "$OLD_NODE" 2>/dev/null || true
     log "node-env replaced"
     NODE_REPLACED="yes"
 fi
 
 cat <<EOF
-[publish] Done. Upgraded to: $HOST_DIR
+[upgrade] Done. Upgraded to: $HOST_DIR
 
 What was replaced:
    bishon/         $REPLACED_BISHON
@@ -178,3 +221,13 @@ Next step — restart the container:
    bash $HOST_DIR/scripts/docker/stop.sh  --host-dir $HOST_DIR
    bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
 EOF
+
+# Report any stale backups that could not be deleted (root-owned __pycache__).
+if [ ${#STALE_FAILED[@]} -gt 0 ]; then
+    cat <<EOF
+
+WARNING: ${#STALE_FAILED[@]} backup dir(s) could not be deleted (root-owned files).
+Clean up with:
+  sudo rm -rf ${STALE_FAILED[*]}
+EOF
+fi

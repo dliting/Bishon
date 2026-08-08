@@ -5,6 +5,7 @@
 #   bash install.sh \
 #       --host-dir <dir>          # where state lives (must be ext4 in WSL/Linux)
 #       --release <release.tar.gz>
+#       --pyenv <pyenv.tar.gz>    # Python env (required for first install)
 #       --image <image.tar>        # from docker save
 #       [--accelerator cuda]       # cuda (default) | ascend (future)
 #
@@ -94,7 +95,8 @@ die() { bishon_die "$@"; }
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
 [ -z "$MODELS_TAR" ] || [ -f "$MODELS_TAR" ] || die "models tar not found: $MODELS_TAR"
 [ -z "$NODE_TAR"   ] || [ -f "$NODE_TAR"   ] || die "node tar not found: $NODE_TAR"
-[ -z "$PYENV_TAR"  ] || [ -f "$PYENV_TAR"  ] || die "pyenv tar not found: $PYENV_TAR"
+[ -n "$PYENV_TAR"  ] || die "--pyenv required for first-time install"
+[ -f "$PYENV_TAR"  ] || die "pyenv tar not found: $PYENV_TAR"
 
 case "$IMAGE_SOURCE" in
     load)
@@ -195,9 +197,6 @@ rm -rf "$HOST_DIR/bishon"
 mv "$TMP/bishon"     "$HOST_DIR/bishon"
 
 # --- 4b. python-env: separate tarball (required) ----------------------------
-if [ -z "$PYENV_TAR" ]; then
-    die "python-env required for first-time install. Use --pyenv <tar>."
-fi
 log "extracting python-env from $PYENV_TAR"
 tar -xzf "$PYENV_TAR" -C "$HOST_DIR"
 [ -d "$HOST_DIR/python-env/bin" ] || \
@@ -264,7 +263,6 @@ fi
 # --- 6. Record installed version ---------------------------------------------
 echo "$IMAGE_TAG" > "$HOST_DIR/.image-tag"
 echo "$ACCELERATOR" > "$HOST_DIR/.accelerator"
-echo "bridge" > "$HOST_DIR/.network"
 
 # --- 7. Next steps -----------------------------------------------------------
 cat <<EOF

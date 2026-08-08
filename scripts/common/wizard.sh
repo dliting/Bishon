@@ -222,6 +222,13 @@ case "$MODE" in
             "release tarball path? (from make-release.sh; carries source + scripts)" \
             "$RELEASE_TAR")
 
+        # pyenv tarball is required for first-time install
+        if [[ "$MODE" == docker-* ]] && [ -z "$PYENV_TAR" ]; then
+            PYENV_TAR=$(ask_path \
+                "pyenv tarball path? (bishon-pyenv-*.tar.gz, required for first install)" \
+                "$PYENV_TAR")
+        fi
+
         if [ "$MODE" = "docker-online" ]; then
             IMAGE_SOURCE="${IMAGE_SOURCE:-pull}"
             if [ -z "$REGISTRY" ] || [ "$REGISTRY" = "ghcr" ]; then

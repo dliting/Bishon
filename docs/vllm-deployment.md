@@ -263,18 +263,31 @@ bash deploy.sh --non-interactive \
 ### 5. 配置 .env
 
 ```bash
-# Docker 模式下，vLLM 在宿主机，需用 Docker 网桥 IP
-# 查询网桥 IP：ip -4 addr show docker0 | grep inet
-# 通常是 172.17.0.1
-
 vi /opt/bishon-home/.env
 ```
 
-关键配置：
+关键配置（根据网络模式选择）：
+
+**`--network host` 模式**（推荐，vLLM 与 Bishon 同机时）：
 ```bash
+OPENAI_API_BASE=http://localhost:8000/v1
+EMBEDDING_API_BASE=http://localhost:8001/v1/embeddings
+```
+
+**bridge 模式**（默认）：需用 Docker 网桥 IP，通常是 `172.17.0.1`。
+```bash
+# 查询网桥 IP：ip -4 addr show docker0 | grep inet
 OPENAI_API_BASE=http://172.17.0.1:8000/v1
 EMBEDDING_API_BASE=http://172.17.0.1:8001/v1/embeddings
+```
 
+**远程 vLLM**：使用 vLLM 服务所在机器的实际 IP。
+```bash
+OPENAI_API_BASE=http://<vllm-host-ip>:8000/v1
+EMBEDDING_API_BASE=http://<vllm-host-ip>:8001/v1/embeddings
+```
+
+```bash
 # tiktoken 离线缓存（entrypoint.sh 自动设置，无需手动配置）
 # TIKTOKEN_CACHE_DIR=/opt/bishon-home/models/tiktoken_cache
 ```

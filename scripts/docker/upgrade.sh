@@ -8,7 +8,7 @@
 #   - bishon/           (source code)
 #   - models/           (model weights)
 #   - scripts/          (deploy scripts: start.sh, stop.sh, etc.)
-#   - python-env/       (only if the new tarball contains one — rare)
+#   - python-env/       (only if --pyenv <tar> is provided)
 #
 # Overlay preserves runtime data (BISHON_DB symlinks, __pycache__, logs)
 # that is NOT in the release tarball. Stale source files from old versions
@@ -18,7 +18,7 @@
 #   - .env              (user config)
 #   - BISHON_DB/        (runtime data)
 #   - logs/             (runtime logs)
-#   - .image-tag, .accelerator
+#   - .image-tag, .accelerator, .network
 #
 # After upgrade, restart the container: stop.sh && start.sh.
 
@@ -238,7 +238,7 @@ What was replaced:
    node-env/       $NODE_REPLACED
 
 Preserved (NEVER touched):
-   .env, BISHON_DB/, logs/, .image-tag, .accelerator
+   .env, BISHON_DB/, logs/, .image-tag, .accelerator, .network
 
 Next step — restart the container:
    bash $HOST_DIR/scripts/docker/stop.sh  --host-dir $HOST_DIR

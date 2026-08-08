@@ -69,6 +69,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate --network early (before it gets written to .network file).
+case "$NETWORK" in
+    bridge|host) ;;
+    *) echo "error: --network must be bridge or host, got: $NETWORK" >&2; exit 1 ;;
+esac
+
 export BISHON_LOG_TAG=deploy
 source "$SCRIPT_DIR/scripts/common/utils.sh"
 log() { bishon_log "$@"; }

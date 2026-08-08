@@ -6,7 +6,7 @@
 # independently testable (bats source + call).
 #
 # The container is started with:
-#   -v <host-dir>:/opt/bishon-data
+#   -v <host-dir>:/opt/bishon-home
 #   --env-file <host-dir>/.env
 #
 # Fail loudly (exit non-zero) on any precondition violation — better than
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-DATA_ROOT=/opt/bishon-data
+DATA_ROOT=/opt/bishon-home
 ENTRYPOINT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB_DIR="$ENTRYPOINT_DIR/entrypoint_lib"
 

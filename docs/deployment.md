@@ -74,11 +74,12 @@ bash scripts/docker/install.sh \
 ```bash
 # --version 默认读 VERSION 文件
 bash scripts/docker/build-image.sh                # 构建 bishon-cuda 镜像
-bash scripts/docker/make-release.sh                # 打 env + 源码 + models + 镜像 tar
+bash scripts/docker/make-release.sh                # 打源码 + pyenv + models + 镜像 tar
 ls dist/
-#   bishon-release-<ver>.tar.gz
-#   bishon-models-<ver>.tar.gz
-#   bishon-cuda-image-<ver>.tar
+#   bishon-release-<ver>.tar.gz       (源码 + 脚本, ~2 MB)
+#   bishon-pyenv-<ver>.tar.gz         (conda env, ~7 GB)
+#   bishon-models-<ver>.tar.gz        (模型权重, ~1 GB)
+#   bishon-cuda-image-<ver>.tar       (镜像, ~4 GB)
 #   *.sha256
 ```
 
@@ -122,12 +123,13 @@ ls dist/
 |---|---|---|
 | `bishon-cuda:<version>` 镜像 | ~4 GiB | CUDA 12.6 runtime + Ubuntu 22.04 + 系统库 + 时区 + miniconda3 base（**无 envs**） |
 | `bishon-cuda-image-<version>.tar` | ~4 GiB | `docker save` 产出的镜像 tar |
-| `bishon-release-<version>.tar.gz` | ~5–7 GiB | `python-env/` + `bishon/` 源码 + `models/` + `scripts/` + `.env.example` |
+| `bishon-release-<version>.tar.gz` | ~2 MiB | `bishon/` 源码 + `scripts/` + `.env.example`（不含 python-env、models） |
+| `bishon-pyenv-<version>.tar.gz` | ~5–7 GiB | `python-env/` conda 环境（独立 tarball，首次安装必需） |
 
 **目录布局**（部署机）：
 
 ```
-<host-dir>/                          ← 由 -v 挂载到容器 /opt/bishon-data
+<host-dir>/                          ← 由 -v 挂载到容器 /opt/bishon-home
 ├── python-env/                      ← 从 WSL envs/bishon 拷贝（可被 publish 升级）
 ├── bishon/                          ← 应用源码（可被 publish 升级）
 ├── models/                          ← 模型权重（可被 publish 升级）
@@ -146,19 +148,19 @@ ls dist/
 
 容器入口（`docker/entrypoint.sh`）做三件事：
 1. 校验 `<host-dir>` 关键内容存在；
-2. 创建软链接 `/opt/miniconda3/envs/bishon → /opt/bishon-data/python-env`，让 env 里硬编码的绝对路径在容器内仍能解析；
-3. `cd /opt/bishon-data/bishon && exec python -m uvicorn ...`。
+2. 创建软链接 `/opt/miniconda3/envs/bishon → /opt/bishon-home/python-env`，让 env 里硬编码的绝对路径在容器内仍能解析；
+3. `cd /opt/bishon-home/bishon && exec python -m uvicorn ...`。
 
-**`.env` 路径桥接**：`bishon_kernel/configs/model_config.py:13` 通过 `load_dotenv(root_path/.env)` 加载配置，`root_path` 推导为容器内 `/opt/bishon-data/bishon/`。但 `.env` 放在更上层（`/opt/bishon-data/.env`），原因：`bishon/` 会被 publish 替换，`.env` 放其内部有覆盖风险。桥接方式：`start.sh` 用 `docker run --env-file <host-dir>/.env` 把变量注入容器进程环境；`load_dotenv` 找不到 `bishon/.env` 时静默返回，不覆盖已注入的环境变量（python-dotenv 默认行为）。
+**`.env` 路径桥接**：`bishon_kernel/configs/model_config.py:13` 通过 `load_dotenv(root_path/.env)` 加载配置，`root_path` 推导为容器内 `/opt/bishon-home/bishon/`。但 `.env` 放在更上层（`/opt/bishon-home/.env`），原因：`bishon/` 会被 publish 替换，`.env` 放其内部有覆盖风险。桥接方式：`start.sh` 用 `docker run --env-file <host-dir>/.env` 把变量注入容器进程环境；`load_dotenv` 找不到 `bishon/.env` 时静默返回，不覆盖已注入的环境变量（python-dotenv 默认行为）。
 
 **BISHON_DB / logs 路径重定向**（关键）：`model_config.py` / `faiss_client.py` / `custom_log.py` 都通过 `root_path` 拼接路径，所以 SQLite 元数据 (`BISHON_DB/metadata.db`)、FAISS 索引 (`BISHON_DB/faiss/`)、上传内容 (`BISHON_DB/content/`)、日志 (`logs/{debug,qa}_logs/`) 默认都落在 `root_path/` 即源码目录里。如果不重定向，部署侧会出两个问题：
 
 1. **upgrade 升级时数据被覆盖**：旧版 `upgrade.sh` 原子替换 `bishon/`，源码目录里的 BISHON_DB 会被一起抹掉。新版改为 overlay 方式（`cp -a` 覆盖），保留运行时数据。
 2. **WSL 测试场景触发避坑指南 #2**：若宿主侧 `bishon/` 路径在 NTFS 上（如 `/mnt/i/...` 经 9p/drvfs），SQLite WAL 会因 mmap/shm 不支持而 I/O 错误。
 
-`entrypoint.sh` 在启动 uvicorn 之前，对 `bishon/BISHON_DB` 与 `bishon/logs` 创建符号链接到 `/opt/bishon-data/BISHON_DB` 与 `/opt/bishon-data/logs`（与源码目录同级）。这样：
+`entrypoint.sh` 在启动 uvicorn 之前，对 `bishon/BISHON_DB` 与 `bishon/logs` 创建符号链接到 `/opt/bishon-home/BISHON_DB` 与 `/opt/bishon-home/logs`（与源码目录同级）。这样：
 
-- 应用代码读 `root_path/BISHON_DB/metadata.db` → 实际落盘 `/opt/bishon-data/BISHON_DB/metadata.db`（持久化、publish-safe、ext4）；
+- 应用代码读 `root_path/BISHON_DB/metadata.db` → 实际落盘 `/opt/bishon-home/BISHON_DB/metadata.db`（持久化、publish-safe、ext4）；
 - 第一次启动自动创建符号链接；**upgrade 升级用 overlay 方式（`cp -a` 覆盖），符号链接会被保留**——因为 tarball 中不含 BISHON_DB/logs 目录，`cp -a` 不会覆盖已有的符号链接；
 - 若源码目录里已存在非空的真实 BISHON_DB/logs（异常情况），entrypoint 拒绝启动并提示迁移，避免数据丢失。
 
@@ -251,7 +253,8 @@ bash scripts/docker/make-release.sh --version 2.1.0
 
 ```
 dist/
-├── bishon-release-2.1.0.tar.gz     # 发布包（含 python-env + 源码 + 模型 + 脚本）
+├── bishon-release-2.1.0.tar.gz     # 发布包（源码 + 脚本）
+├── bishon-pyenv-2.1.0.tar.gz      # Python conda 环境（独立 tarball）
 └── bishon-cuda-image-2.1.0.tar     # docker save 产出的镜像 tar
 ```
 
@@ -263,6 +266,7 @@ dist/
 bash install.sh \
     --host-dir /var/lib/bishon \
     --release /path/to/bishon-release-2.1.0.tar.gz \
+    --pyenv   /path/to/bishon-pyenv-2.1.0.tar.gz \
     --image   /path/to/bishon-cuda-image-2.1.0.tar \
     --node    /path/to/bishon-node-2.1.0.tar.gz \
     --accelerator cuda
@@ -277,7 +281,8 @@ bash install.sh \
    - 拒绝 `9p|drvfs|tmpfs|overlay|smbfs|cifs` 文件系统；
 2. 创建目录骨架（`python-env/` `bishon/` `models/` `BISHON_DB/{faiss,content}` `logs/{debug_logs,qa_logs}`）；
 3. `docker load` 镜像 tar；
-4. 解压发布包，原子 mv 到 `<host-dir>/`；
+4. 解压发布包（源码 + 脚本），原子 mv 到 `<host-dir>/`；
+4b. 解压 python-env 独立 tarball（`--pyenv`，首次安装必需）；
 5. 仅当 `.env` 不存在时拷贝 `.env.example` 为 `.env`（**永不被覆盖**）；
 6. 写 `.image-tag` 与 `.accelerator`。
 
@@ -314,19 +319,27 @@ bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
 bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
 
-`upgrade.sh` 用 overlay 方式（`cp -a` 覆盖）更新 `bishon/`、`models/`、`scripts/`（若新包内有 `python-env/` 也覆盖），**永远不动**：
+`upgrade.sh` 用 overlay 方式（`cp -a` 覆盖）更新 `bishon/`、`models/`、`scripts/`，**永远不动**：
 
 - `.env`（用户配置）
 - `BISHON_DB/`（运行时数据）
 - `logs/`（运行时日志）
 - `.image-tag`、`.accelerator`
 
-如需升级 Python 依赖（新发布包含 `python-env/`），且镜像的 miniconda3 base 版本变了，**必须同时重新 build + load 镜像**。`install.sh` 不重新跑——它假设首次安装已完成；改用：
+如需升级 Python 依赖，开发机重跑 `make-release.sh` 产出新的 `bishon-pyenv-<ver>.tar.gz`，然后在部署机：
+
+```bash
+bash /var/lib/bishon/scripts/upgrade.sh --host-dir /var/lib/bishon --release bishon-release-2.1.1.tar.gz --pyenv bishon-pyenv-2.1.1.tar.gz
+bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
+bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
+```
+
+若镜像的 miniconda3 base 版本变了，**必须同时重新 build + load 镜像**。`install.sh` 不重新跑——它假设首次安装已完成；改用：
 
 ```bash
 docker load -i /path/to/bishon-cuda-image-2.1.1.tar   # 加载新镜像
 echo "bishon-cuda:2.1.1" > /var/lib/bishon/.image-tag  # 切换 tag
-bash /var/lib/bishon/scripts/upgrade.sh --host-dir /var/lib/bishon --release bishon-release-2.1.1.tar.gz
+bash /var/lib/bishon/scripts/upgrade.sh --host-dir /var/lib/bishon --release bishon-release-2.1.1.tar.gz --pyenv bishon-pyenv-2.1.1.tar.gz
 bash /var/lib/bishon/scripts/docker/stop.sh  --host-dir /var/lib/bishon
 bash /var/lib/bishon/scripts/docker/start.sh --host-dir /var/lib/bishon
 ```
@@ -399,7 +412,7 @@ rm -rf /var/lib/bishon
 | # | 避坑指南条目 | 本设计对策 | 实现位置 |
 |---|---|---|---|
 | 1 | `host.docker.internal` 在嵌套虚拟化（VMware / WSL2 原生 Docker Engine）中只解析到 docker0 网桥，访问不到 Windows 主机 | 不依赖任何 host 别名。`.env` 中 `OPENAI_API_BASE` / `EMBEDDING_API_BASE` 由用户显式填部署机真实可达 URL（同机部署可填 `http://localhost:11434/v1` 或同网段 IP）。`install.sh` 末尾提示这一步。 | `.env.example`、`install.sh:Next steps` |
-| 2 | WSL2 通过 9p 协议访问 NTFS，SQLite 的 WAL 模式（依赖 mmap / 共享内存）会触发 I/O 错误，容器无限重启 | `install.sh` 在 mkdir 后立即 `df -T` 校验，拒绝 `/mnt/*`、`/media/*`、`/run/media/*` 路径，并拒绝 `df -T` 报告为 `9p`/`drvfs`/`tmpfs`/`overlay`/`smbfs`/`cifs` 的文件系统（shell `case` 模式匹配）。引导用户用 ext4 路径（如 `~/bishon-data`、`/var/lib/bishon`）。 | `install.sh` 第 1 段文件系统校验 |
+| 2 | WSL2 通过 9p 协议访问 NTFS，SQLite 的 WAL 模式（依赖 mmap / 共享内存）会触发 I/O 错误，容器无限重启 | `install.sh` 在 mkdir 后立即 `df -T` 校验，拒绝 `/mnt/*`、`/media/*`、`/run/media/*` 路径，并拒绝 `df -T` 报告为 `9p`/`drvfs`/`tmpfs`/`overlay`/`smbfs`/`cifs` 的文件系统（shell `case` 模式匹配）。引导用户用 ext4 路径（如 `~/bishon-home`、`/var/lib/bishon`）。 | `install.sh` 第 1 段文件系统校验 |
 | 3 | 容器默认 UTC 时区，业务代码用本地时间生成查询参数会与 UTC+8 数据服务错位 8 小时 | 镜像内三件套：① `apt install tzdata`；② `ENV TZ=Asia/Shanghai`；③ `ln -snf /usr/share/zoneinfo/$TZ /etc/localtime`。`docker run --rm <image> date` 应显示 CST。 | `docker/Dockerfile.cuda` |
 | 4 陷阱 1 | 发布流程把开发机的本地 `.env` 打入发布包，部署时覆盖目标环境已定制配置 | 发布包**不含 `.env`**（`make-release.sh` rsync 排除）。`install.sh` 仅当 `.env` 不存在时从 `.env.example` 创建；`upgrade.sh` **永远不动 `.env`**。 | `make-release.sh` rsync、`install.sh` step 5、`upgrade.sh` |
 | 4 陷阱 2 | 发布包遗漏静态资源目录，启动时路由检测失败，访问返回 404 | ① `make-release.sh` 前置校验 `bishon_kernel/bishon_server/dist/bishon/index.html` 存在；② 安装时再校验；③ `start.sh` 启动后 `curl /bishon/` 验证 200。 | `make-release.sh` step 0c、`install.sh` step 4、`start.sh` step 5 |
@@ -413,7 +426,7 @@ rm -rf /var/lib/bishon
 
 ```bash
 docker logs bishon 2>&1 | tail -100
-docker exec bishon ls /opt/bishon-data/bishon/bishon_kernel/bishon_server/dist/bishon/
+docker exec bishon ls /opt/bishon-home/bishon/bishon_kernel/bishon_server/dist/bishon/
 docker exec bishon /opt/miniconda3/envs/bishon/bin/python -c "import torch; print(torch.cuda.is_available())"
 docker exec bishon bash -lc 'echo LLM=$OPENAI_API_BASE; curl -sS -m 5 "$OPENAI_API_BASE/models" | head -c 200'
 ```
@@ -426,14 +439,14 @@ docker exec bishon bash -lc 'echo LLM=$OPENAI_API_BASE; curl -sS -m 5 "$OPENAI_A
 
 ### 安装时报 "filesystem is 9p/drvfs"
 
-把 `<host-dir>` 换成 WSL ext4 路径，例如 `~/bishon-data`（=`/home/<user>/bishon-data`）或 `/var/lib/bishon`。**不要**用 `/mnt/c/...` 之类 Windows 盘符。
+把 `<host-dir>` 换成 WSL ext4 路径，例如 `~/bishon-home`（=`/home/<user>/bishon-home`）或 `/var/lib/bishon`。**不要**用 `/mnt/c/...` 之类 Windows 盘符。
 
 ### publish 后容器仍跑老代码
 
 确认你跑了 `stop.sh && start.sh`（publish 不重启容器）。校验：
 
 ```bash
-docker exec bishon sha256sum /opt/bishon-data/bishon/bishon_kernel/bishon_server/app.py
+docker exec bishon sha256sum /opt/bishon-home/bishon/bishon_kernel/bishon_server/app.py
 # 对照宿主侧:
 sha256sum /var/lib/bishon/bishon/bishon_kernel/bishon_server/app.py
 ```

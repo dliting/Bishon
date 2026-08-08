@@ -17,11 +17,11 @@ class TestModelsDir:
 
     def test_env_var_override(self):
         """When MODELS_DIR is set, models_dir should use that value."""
-        with mock.patch.dict(os.environ, {"MODELS_DIR": "/opt/bishon-data/models"}):
+        with mock.patch.dict(os.environ, {"MODELS_DIR": "/opt/bishon-home/models"}):
             # Need to reimport to pick up the new env var
             # Since model_config is already imported, we test the function directly
             result = os.getenv("MODELS_DIR", os.path.join("/fallback", "models"))
-            assert result == "/opt/bishon-data/models"
+            assert result == "/opt/bishon-home/models"
 
 
 class TestResolveModelPath:

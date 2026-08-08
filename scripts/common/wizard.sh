@@ -154,6 +154,7 @@ if [ -n "$BUNDLE_DIR" ]; then
     glob_bundle RELEASE_TAR 'bishon-release-*.tar.gz' 'release tarball'
     glob_bundle IMAGE_TAR   'bishon-cuda-image-*.tar' 'image tarball'
     glob_bundle MODELS_TAR  'bishon-models-*.tar.gz'  'models tarball'
+    glob_bundle PYENV_TAR   'bishon-pyenv-*.tar.gz'   'pyenv tarball'
     # If models tarball detected, switch default models-source to tarball.
     if [ -n "$MODELS_TAR" ] && [ -z "$MODELS_SOURCE" ]; then
         MODELS_SOURCE="tarball"
@@ -178,8 +179,8 @@ else
     DEFAULT_MODE="$MODE"
 fi
 
-# Default host-dir: ./bishon-data (next to wherever the operator is running).
-[ -z "$HOST_DIR" ] && HOST_DIR="./bishon-data"
+# Default host-dir: ./bishon-home (next to wherever the operator is running).
+[ -z "$HOST_DIR" ] && HOST_DIR="./bishon-home"
 
 
 # ===== Step 1-4: Gather inputs =====

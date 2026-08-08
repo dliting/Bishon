@@ -19,7 +19,7 @@ os.makedirs(UPLOAD_ROOT_PATH, exist_ok=True)
 logging.info("UPLOAD_ROOT_PATH: %s", UPLOAD_ROOT_PATH)
 
 # Models directory — shared across Docker and bare-metal modes.
-# In Docker mode: entrypoint.sh sets MODELS_DIR=/opt/bishon-data/models.
+# In Docker mode: entrypoint.sh sets MODELS_DIR=/opt/bishon-home/models.
 # In bare-metal mode: MODELS_DIR is unset, defaults to root_path/models/.
 models_dir = os.getenv("MODELS_DIR", os.path.join(root_path, "models"))
 logging.info("models_dir: %s", models_dir)

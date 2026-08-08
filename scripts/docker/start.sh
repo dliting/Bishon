@@ -10,27 +10,36 @@
 set -euo pipefail
 
 HOST_DIR=""
+NETWORK="bridge"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2"; shift 2 ;;
+        --network)  NETWORK="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
 start.sh — Start the Bishon V2 container.
 
 Reads .image-tag and .accelerator from <host-dir>, runs the container with
--v <host-dir>:/opt/bishon-data + --env-file <host-dir>/.env + GPU flags,
+-v <host-dir>:/opt/bishon-home + --env-file <host-dir>/.env + GPU flags,
 then polls /api/health up to 180s (cold-start budget for model loading).
 
 USAGE
-  bash $0 --host-dir <dir>
+  bash $0 --host-dir <dir> [--network bridge|host]
 
 FLAGS
   --host-dir <dir>   Directory created by install.sh. Must contain
                      .image-tag, .accelerator (optional, defaults to cuda),
                      and .env.
+  --network <mode>   Docker network mode (default: bridge).
+                     - bridge: port mapping via -p 8777:8777 (isolated).
+                     - host:   share host network stack; no port mapping.
+                       Useful when LLM/Embedding services run on the host
+                       (e.g. Ollama on Windows via WSL2) and the container
+                       needs to reach them via localhost.
 
 EXAMPLES
   bash $0 --host-dir /var/lib/bishon
+  bash $0 --host-dir /var/lib/bishon --network host
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -104,13 +113,23 @@ if grep -qi microsoft /proc/version 2>/dev/null && [ -d /usr/lib/wsl/drivers ]; 
     log "WSL2 GPU driver mount: /usr/lib/wsl → /usr/lib/wsl (ro)"
 fi
 
-log "starting container 'bishon' (image=$IMAGE, acc=$ACC)"
+log "starting container 'bishon' (image=$IMAGE, acc=$ACC, network=$NETWORK)"
+
+# --network host: no port mapping, container shares host network stack.
+# --network bridge (default): map port 8777.
+NET_FLAGS=()
+case "$NETWORK" in
+    bridge) NET_FLAGS=(-p 8777:8777) ;;
+    host)   NET_FLAGS=(--network host) ;;
+    *)      die "unknown network mode '$NETWORK' (use bridge or host)" ;;
+esac
+
 docker run -d \
     --name bishon \
     "${GPU_FLAGS[@]}" \
-    -p 8777:8777 \
+    "${NET_FLAGS[@]}" \
     --env-file "$HOST_DIR/.env" \
-    -v "$HOST_DIR:/opt/bishon-data" \
+    -v "$HOST_DIR:/opt/bishon-home" \
     "${WSL_DRIVER_FLAG[@]}" \
     --restart unless-stopped \
     "$IMAGE" \

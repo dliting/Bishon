@@ -21,6 +21,7 @@ RELEASE_TAR=""
 IMAGE_TAR=""
 MODELS_TAR=""
 NODE_TAR=""
+PYENV_TAR=""
 ACCELERATOR="cuda"
 IMAGE_SOURCE="load"     # load | pull | existing
 IMAGE_REF=""            # used when IMAGE_SOURCE=pull: e.g. bishon-cuda:2.1.0
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
         --image)        IMAGE_TAR="$2";   shift 2 ;;
         --models)       MODELS_TAR="$2";  shift 2 ;;
         --node)         NODE_TAR="$2";    shift 2 ;;
+        --pyenv)        PYENV_TAR="$2";   shift 2 ;;
         --accelerator)  ACCELERATOR="$2"; shift 2 ;;
         --pull)         IMAGE_SOURCE="pull"; shift ;;
         --image-source) IMAGE_SOURCE="$2"; shift 2 ;;
@@ -49,12 +51,12 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             cat <<EOF
 Usage: $0 --host-dir <dir> (--image <tar> | --pull | --image-source existing) \
-          --release <tar>
+          --release <tar> --pyenv <tar>
           [--models <tar.gz>] [--node <tar.gz>] [--accelerator cuda] [--tag <ver>]
 
-Note: --release is ALWAYS required for first-time install (the release
-tarball carries the Python env + source code that cannot be obtained from
-a registry pull).
+Note: --release and --pyenv are ALWAYS required for first-time install.
+  --release carries the source code + scripts.
+  --pyenv carries the Python conda env (cannot be obtained from a registry pull).
 
 Image source modes:
   --image <tar>            Load image from a local docker save tarball (default).
@@ -70,6 +72,7 @@ Other:
   --models <tar.gz>    (Optional) Models tarball from make-release.sh.
   --node <tar.gz>      (Optional) Node toolchain tarball from make-release.sh.
                        Enables frontend hot-rebuild at container start.
+  --pyenv <tar.gz>     (Required) Python conda env tarball from make-release.sh.
   --accelerator <acc>  cuda (default) | ascend (future).
 EOF
             exit 0 ;;
@@ -91,6 +94,7 @@ die() { bishon_die "$@"; }
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
 [ -z "$MODELS_TAR" ] || [ -f "$MODELS_TAR" ] || die "models tar not found: $MODELS_TAR"
 [ -z "$NODE_TAR"   ] || [ -f "$NODE_TAR"   ] || die "node tar not found: $NODE_TAR"
+[ -z "$PYENV_TAR"  ] || [ -f "$PYENV_TAR"  ] || die "pyenv tar not found: $PYENV_TAR"
 
 case "$IMAGE_SOURCE" in
     load)
@@ -179,8 +183,6 @@ trap 'rm -rf "$TMP"' EXIT
 log "extracting $RELEASE_TAR ..."
 tar -xzf "$RELEASE_TAR" -C "$TMP"
 
-[ -d "$TMP/python-env/bin" ] || \
-    die "release tarball missing python-env/bin. Source-only packages (--skip-env) cannot be used for first-time install."
 [ -d "$TMP/bishon/bishon_kernel" ] || \
     die "release tarball missing bishon/bishon_kernel"
 [ -f "$TMP/bishon/bishon_kernel/bishon_server/dist/bishon/index.html" ] || \
@@ -189,9 +191,17 @@ if ! grep -qP 'src="/bishon/assets/|href="/bishon/assets/' "$TMP/bishon/bishon_k
     die "release tarball frontend dist has wrong base path (assets do not start with /bishon/assets/). Rebuild with VITE_APP_WEB_PREFIX=/bishon."
 fi
 
-rm -rf "$HOST_DIR/python-env" "$HOST_DIR/bishon"
-mv "$TMP/python-env" "$HOST_DIR/python-env"
+rm -rf "$HOST_DIR/bishon"
 mv "$TMP/bishon"     "$HOST_DIR/bishon"
+
+# --- 4b. python-env: separate tarball (required) ----------------------------
+if [ -z "$PYENV_TAR" ]; then
+    die "python-env required for first-time install. Use --pyenv <tar>."
+fi
+log "extracting python-env from $PYENV_TAR"
+tar -xzf "$PYENV_TAR" -C "$HOST_DIR"
+[ -d "$HOST_DIR/python-env/bin" ] || \
+    die "pyenv tarball did not produce python-env/bin directory"
 
 # CRLF guard: if the release tarball was made on Windows or git checked out
 # with CRLF, bishon/docker/*.sh would fail in the container with

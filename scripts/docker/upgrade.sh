@@ -27,35 +27,39 @@ set -euo pipefail
 HOST_DIR=""
 RELEASE_TAR=""
 NODE_TAR=""
+PYENV_TAR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2";    shift 2 ;;
         --release)  RELEASE_TAR="$2"; shift 2 ;;
         --node)     NODE_TAR="$2";    shift 2 ;;
+        --pyenv)    PYENV_TAR="$2";   shift 2 ;;
         -h|--help)
             cat <<EOF
 upgrade.sh — Upgrade code/models/scripts on an installed host (in place).
 
 Overlays new files on top of existing directories in <host-dir> from a new
 release tarball. Preserves runtime data (BISHON_DB, logs, __pycache__).
-Optionally overlays python-env/ if the new tarball carries one. Optionally
-replaces node-env/ via --node. Never touches .env, BISHON_DB/, logs/,
-.image-tag, .accelerator.
+Optionally overlays python-env/ via --pyenv. Optionally replaces node-env/
+via --node. Never touches .env, BISHON_DB/, logs/, .image-tag, .accelerator.
 
 After upgrade, restart the container: stop.sh && start.sh.
 
 USAGE
-  bash $0 --host-dir <dir> --release <new-release.tar.gz> [--node <node-tar>]
+  bash $0 --host-dir <dir> --release <new-release.tar.gz> [--node <node-tar>] [--pyenv <pyenv-tar>]
 
 FLAGS
   --host-dir <dir>     Directory created by install.sh.
   --release <tar.gz>   New release tarball (from make-release.sh).
-                       Use --src-only mode in make-release.sh for code-only
-                       patches (no env, no models) — much smaller tarball.
+                       Use --skip-pyenv --skip-models in make-release.sh for
+                       code-only patches — much smaller tarball.
   --node <tar.gz>      (Optional) Node toolchain tarball from make-release.sh.
                        Atomically replaces node-env/ to upgrade Node or
                        node_modules without rebuilding the docker image.
+  --pyenv <tar.gz>     (Optional) Python conda env tarball from make-release.sh.
+                       Overlays new files on top of existing python-env/ (with
+                       timestamped backup). Required when Python deps change.
 
 EXAMPLES
   bash $0 --host-dir /var/lib/bishon \\
@@ -81,6 +85,7 @@ die() { bishon_die "$@"; }
 [ -n "$HOST_DIR" ] || { echo "usage: $0 --host-dir <dir> --release <tar>" >&2; exit 1; }
 [ -f "$RELEASE_TAR" ] || die "release tar not found: $RELEASE_TAR"
 [ -z "$NODE_TAR" ] || [ -f "$NODE_TAR" ] || die "node tar not found: $NODE_TAR"
+[ -z "$PYENV_TAR" ] || [ -f "$PYENV_TAR" ] || die "pyenv tar not found: $PYENV_TAR"
 [ -d "$HOST_DIR/bishon" ] || die "$HOST_DIR does not look installed (no bishon/ subdir). Run install.sh first."
 # Fail fast if other install artifacts are missing — upgrade cannot repair
 # them, and continuing would let start.sh fail later with a confusing
@@ -94,9 +99,11 @@ TS="$(date +%Y%m%d-%H%M%S)"
 # Pre-flight: check available disk space. The overlay approach backs up each
 # directory before overlaying, so peak usage = current size + backup size +
 # tarball extraction. On a 40 GB minimum disk this can be tight.
+MIN_AVAIL=5
+[ -n "$PYENV_TAR" ] && MIN_AVAIL=10
 avail_gb="$(df -P "$HOST_DIR" | awk 'NR==2 {printf "%.0f", $4/1024/1024}')"
-if [ "$avail_gb" -lt 5 ]; then
-    die "Only ${avail_gb} GB free on $HOST_DIR — need at least 5 GB for upgrade backup. Free space or use a src-only release."
+if [ "$avail_gb" -lt "$MIN_AVAIL" ]; then
+    die "Only ${avail_gb} GB free on $HOST_DIR — need at least ${MIN_AVAIL} GB for upgrade backup. Free space or use a src-only release."
 fi
 
 # Same-FS mktemp so `mv` is atomic (see install.sh for rationale).
@@ -111,7 +118,6 @@ tar -xzf "$RELEASE_TAR" -C "$TMP_DIR"
 [ -d "$TMP_DIR/bishon" ]     && REPLACED_BISHON="yes" || REPLACED_BISHON="no"
 [ -d "$TMP_DIR/models" ]     && REPLACED_MODELS="yes" || REPLACED_MODELS="no"
 [ -d "$TMP_DIR/scripts" ]    && REPLACED_SCRIPTS="yes" || REPLACED_SCRIPTS="no"
-[ -d "$TMP_DIR/python-env" ] && REPLACED_BISHON_ENV="yes" || REPLACED_BISHON_ENV="no"
 
 # Directory replace helper:
 #   1. Back up current directory (full copy, preserves all runtime data)
@@ -156,11 +162,28 @@ STALE_FAILED=()
 replace_dir "bishon"
 replace_dir "models"
 replace_dir "scripts"
-replace_dir "python-env"
-[ "$REPLACED_BISHON_ENV" = "yes" ] && {
-    log "NOTE: python-env replaced. If the image's miniconda3 base version"
-    log "      changed since install, rebuild the image too."
-}
+
+# --- python-env from separate tarball (optional) ----------------------------
+PYENV_REPLACED="no"
+if [ -n "$PYENV_TAR" ]; then
+    log "upgrading python-env from $PYENV_TAR"
+    TMP_PYENV="$(mktemp -d -p "$HOST_DIR" .tmp.pyenv.XXXXXX)"
+    tar -xzf "$PYENV_TAR" -C "$TMP_PYENV"
+    [ -d "$TMP_PYENV/python-env" ] || { rm -rf "$TMP_PYENV"; die "pyenv tarball did not produce python-env/ directory"; }
+    # Overlay: new files overwrite old, runtime data preserved.
+    if [ -d "$HOST_DIR/python-env" ]; then
+        OLD_PYENV="$HOST_DIR/python-env.old.$TS"
+        cp -a "$HOST_DIR/python-env" "$OLD_PYENV"
+        STALE_BACKUPS+=("$OLD_PYENV")
+    else
+        mkdir -p "$HOST_DIR/python-env"
+    fi
+    cp -a "$TMP_PYENV/python-env/." "$HOST_DIR/python-env/"
+    rm -rf "$TMP_PYENV"
+    PYENV_REPLACED="yes"
+    log "python-env replaced"
+    log "NOTE: If the image's miniconda3 base version changed since install, rebuild the image too."
+fi
 
 # --- Best-effort cleanup of old backups --------------------------------------
 # __pycache__ files created by root inside Docker may be undeletable by the
@@ -211,7 +234,7 @@ What was replaced:
    bishon/         $REPLACED_BISHON
    models/         $REPLACED_MODELS
    scripts/        $REPLACED_SCRIPTS
-   python-env/     $REPLACED_BISHON_ENV
+   python-env/     $PYENV_REPLACED
    node-env/       $NODE_REPLACED
 
 Preserved (NEVER touched):

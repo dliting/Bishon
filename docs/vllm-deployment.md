@@ -228,7 +228,8 @@ release 包由 `make-release.sh` 生成，包含：
 | 文件 | 大小 | 说明 |
 |------|------|------|
 | `bishon-cuda-image-2.2.0.tar` | ~3.1G | Docker 镜像 |
-| `bishon-release-2.2.0.tar.gz` | ~6.9G | Python 运行环境 + Bishon 源码 + 前端 |
+| `bishon-release-2.2.0.tar.gz` | ~2M | Bishon 源码 + 前端 + 部署脚本（不含 python-env） |
+| `bishon-pyenv-2.2.0.tar.gz` | ~7G | Python conda 运行环境（首次安装必需） |
 | `bishon-models-2.2.0.tar.gz` | ~1.0G | Reranker + OCR 模型权重 |
 | `bishon-node-2.2.0.tar.gz` | ~161M | Node.js 前端依赖（可选） |
 | `deploy.sh` | — | 部署入口脚本 |
@@ -251,8 +252,9 @@ for f in *.sha256; do sha256sum -c "$f"; done
 ```bash
 bash deploy.sh --non-interactive \
   --mode docker-offline \
-  --host-dir /opt/bishon-data \
+  --host-dir /opt/bishon-home \
   --release bishon-release-2.2.0.tar.gz \
+  --pyenv bishon-pyenv-2.2.0.tar.gz \
   --image bishon-cuda-image-2.2.0.tar \
   --models bishon-models-2.2.0.tar.gz \
   --no-start
@@ -265,7 +267,7 @@ bash deploy.sh --non-interactive \
 # 查询网桥 IP：ip -4 addr show docker0 | grep inet
 # 通常是 172.17.0.1
 
-vi /opt/bishon-data/.env
+vi /opt/bishon-home/.env
 ```
 
 关键配置：
@@ -274,7 +276,7 @@ OPENAI_API_BASE=http://172.17.0.1:8000/v1
 EMBEDDING_API_BASE=http://172.17.0.1:8001/v1/embeddings
 
 # tiktoken 离线缓存（entrypoint.sh 自动设置，无需手动配置）
-# TIKTOKEN_CACHE_DIR=/opt/bishon-data/models/tiktoken_cache
+# TIKTOKEN_CACHE_DIR=/opt/bishon-home/models/tiktoken_cache
 ```
 
 ### 6. tiktoken 离线缓存（已内置）
@@ -292,12 +294,12 @@ import tiktoken; tiktoken.get_encoding('cl100k_base')
 "
 
 # 传输到目标机器
-scp -r tiktoken_cache/ ubuntu@<target>:/opt/bishon-data/tiktoken_cache/
+scp -r tiktoken_cache/ ubuntu@<target>:/opt/bishon-home/tiktoken_cache/
 ```
 
 ### 7. 模型路径（无需手动配置）
 
-`entrypoint.sh` 自动设置 `MODELS_DIR=/opt/bishon-data/models`，Bishon 代码通过此环境变量定位模型文件。无需手动创建符号链接。
+`entrypoint.sh` 自动设置 `MODELS_DIR=/opt/bishon-home/models`，Bishon 代码通过此环境变量定位模型文件。无需手动创建符号链接。
 
 ### 8. 注册 NVIDIA Container Toolkit
 
@@ -311,7 +313,7 @@ docker info | grep -i runtime
 ### 9. 启动 Bishon
 
 ```bash
-bash /opt/bishon-data/scripts/docker/start.sh --host-dir /opt/bishon-data
+bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home
 ```
 
 ### 10. 验证
@@ -388,7 +390,7 @@ EMBEDDING_API_BASE=http://172.17.0.1:8001/v1/embeddings
 
 **解决方案**（已内置）：
 1. `make-release.sh` 自动将 tiktoken 缓存预生成到 `models/tiktoken_cache/` 并打包进 release
-2. `entrypoint.sh` 自动设置 `TIKTOKEN_CACHE_DIR=/opt/bishon-data/models/tiktoken_cache`
+2. `entrypoint.sh` 自动设置 `TIKTOKEN_CACHE_DIR=/opt/bishon-home/models/tiktoken_cache`
 3. bare-metal `start.sh` 自动设置 `TIKTOKEN_CACHE_DIR=<source_dir>/models/tiktoken_cache`
 4. 无需手动配置
 
@@ -399,7 +401,7 @@ EMBEDDING_API_BASE=http://172.17.0.1:8001/v1/embeddings
 **原因**：install.sh 将 models 解压到 `$HOST_DIR/models/`，但 Bishon 代码期望在 `$HOST_DIR/bishon/models/`。
 
 **解决方案**（已内置）：
-1. `entrypoint.sh` 设置 `MODELS_DIR=/opt/bishon-data/models`
+1. `entrypoint.sh` 设置 `MODELS_DIR=/opt/bishon-home/models`
 2. `model_config.py` 通过 `MODELS_DIR` 环境变量定位模型目录
 3. bare-metal 模式默认使用 `root_path/models/`
 4. 无需手动创建符号链接

@@ -14,6 +14,11 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ### 新增
 - **`/api/health` 新增 GPU / CUDA 可用性探针。** 在 `ServiceStatusStore.ALL_SERVICES` 注册新的 `gpu` 服务项，报告 `torch.cuda.is_available()` 或 `paddle.device.cuda.device_count()` 是否能看到可用设备。健康时 detail 含设备名 + CUDA 版本；WSL2 环境下两个框架都报告无设备时，detail 直接指向 `docs/wsl-docker-gpu-pitfall.md`（典型的缺 `/usr/lib/wsl` bind-mount 症状）。两个检查都是**运行时**探针——刻意不用 `paddle.device.is_compiled_with_cuda()`，因为它在 GPU 运行时不可用时仍返回 True（误报）。把 WSL2 docker GPU 回归问题暴露到监控里，避免 Rerank/FAISS-GPU/PaddleOCR-GPU 静默回退到 CPU 还发现不了。新增 7 个单元测试在 `tests/backend/unit/monitoring/test_service_probes.py`。
+- **python-env 独立打包。** `make-release.sh` 现在产出 `bishon-pyenv-<ver>.tar.gz` 作为独立 tarball（~7 GB），不再将 python-env 打入主 release tarball。主 `bishon-release-<ver>.tar.gz` 变为纯源码包（~2 MB）。`install.sh` 首次安装需 `--pyenv <tar>`；`upgrade.sh` 接受 `--pyenv <tar>` 升级 Python 依赖（overlay + 备份方式）。`--skip-env` 重命名为 `--skip-pyenv`。与 models/node 已有的独立打包模式一致，大幅减小代码增量升级包体积。
+- **发布包操作规范**（`docs/release-ops.md`）。文档化发布包的制作、传输、保留和部署标准流程。核心规则：发布包按版本号子目录组织，不覆盖已有版本。
+
+### 变更
+- **容器挂载点重命名：`/opt/bishon-data` → `/opt/bishon-home`。** "data" 不准确——该目录包含代码、env、模型和配置，不只是数据；"home" 更贴切。影响 `launcher.sh`（需重打镜像）、`entrypoint.sh`、`start.sh`、`Dockerfile.cuda`、向导默认值及所有文档。宿主机 `--host-dir` 由用户指定，不受影响。
 
 ### 修复
 - **WSL2 GPU 直通——`nvidia-smi` 正常但容器内 `torch.cuda.is_available()` 返回 `False`。** 根因：`nvidia-container-runtime` 在 cherry-pick WSL 驱动文件时漏掉了 `libnvdxgdmal.so.1`（DXG DMA 助手）。少了它，WSL 的 `libcuda.so.1` 代理第一次 `cuInit()` 就返回 `Error 500: named symbol not found`——容器内 Rerank / FAISS-GPU / PaddleOCR-GPU 静默回退到 CPU，而 `nvidia-smi` 仍正常显示 GPU。修复：`scripts/docker/start.sh` 在 WSL 环境下（`grep -qi microsoft /proc/version`）自动 bind-mount `-v /usr/lib/wsl:/usr/lib/wsl:ro`。原生 Linux 部署不受影响。完整记录见 `docs/wsl-docker-gpu-pitfall.md`。
@@ -116,8 +121,8 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - **CI shell job** 在 `.github/workflows/ci.yml`，和 backend（Python 3.11/3.12）、frontend（Node 20）job 并列。
 
 ### 变更
-- **Entrypoint 把 BISHON_DB/logs** 从源码相对路径重定向到 `/opt/bishon-data/` 根（通过符号链接）。修两个潜在问题：(1) publish 替换 `bishon/` 会清掉用户数据；(2) WSL `/mnt/*` 源码目录通过 9p/NTFS 触发 SQLite WAL I/O 错误。
-- **`.env` 通过 `docker run --env-file` 注入**，配置文件位于 `/opt/bishon-data/.env`（publish 安全的 source 同级），同时 `model_config.py` 的 `load_dotenv(root_path/.env)` 作为 no-op 保留。
+- **Entrypoint 把 BISHON_DB/logs** 从源码相对路径重定向到 `/opt/bishon-home/` 根（通过符号链接）。修两个潜在问题：(1) publish 替换 `bishon/` 会清掉用户数据；(2) WSL `/mnt/*` 源码目录通过 9p/NTFS 触发 SQLite WAL I/O 错误。
+- **`.env` 通过 `docker run --env-file` 注入**，配置文件位于 `/opt/bishon-home/.env`（publish 安全的 source 同级），同时 `model_config.py` 的 `load_dotenv(root_path/.env)` 作为 no-op 保留。
 - **`build.sh` 体积输出**：把老 Docker 上不可用的 `divf` Go 模板函数换成 awk。
 - **`Dockerfile.cuda` miniconda 下载**：多源 fallback（清华镜像优先，官方次之），应对国内网络环境。
 - **`Dockerfile.cuda` HEALTHCHECK `start-period`**：120s → 180s，匹配 `start.sh` 的轮询窗口。

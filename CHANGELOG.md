@@ -11,6 +11,11 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ### Added
 - **GPU / CUDA availability probe in `/api/health`.** A new `gpu` service entry (registered in `ServiceStatusStore.ALL_SERVICES`) reports whether `torch.cuda.is_available()` or `paddle.device.cuda.device_count()` see a usable device. Detail string includes device name + CUDA version when healthy, and on WSL2 specifically points operators to `docs/wsl-docker-gpu-pitfall.md` when both frameworks report no device (the classic missing-`/usr/lib/wsl` bind-mount symptom). Both checks are runtime probes, not compile-time flags — `paddle.device.is_compiled_with_cuda()` is deliberately NOT used because it returns True even when the GPU is unreachable at runtime. Surfaces the WSL2 docker GPU regression in monitoring rather than letting Rerank/FAISS-GPU/PaddleOCR-GPU silently fall back to CPU. Backed by 7 unit tests in `tests/backend/unit/monitoring/test_service_probes.py`.
+- **python-env independent packaging.** `make-release.sh` now produces `bishon-pyenv-<ver>.tar.gz` as a separate tarball (~7 GB), instead of bundling python-env into the main release tarball. The main `bishon-release-<ver>.tar.gz` is now source-only (~2 MB). `install.sh` requires `--pyenv <tar>` for first-time install. `upgrade.sh` accepts `--pyenv <tar>` for Python dependency upgrades (overlay with backup). `--skip-env` renamed to `--skip-pyenv`. This follows the same pattern already used for models and node tarballs, and dramatically reduces the size of code-only upgrade packages.
+- **Release operations spec** (`docs/release-ops.md`). Documents the standard workflow for making, transferring, and retaining release packages on both dev and target machines. Key rule: release packages are organized by version number subdirectories and never overwritten.
+
+### Changed
+- **Container mount point renamed: `/opt/bishon-data` → `/opt/bishon-home`.** The name "data" was inaccurate — the directory contains code, env, models, and config, not just data. "home" better reflects its role. Affects `launcher.sh` (requires image rebuild), `entrypoint.sh`, `start.sh`, `Dockerfile.cuda`, wizard defaults, and all documentation. Host-side `--host-dir` is user-specified and unaffected.
 
 ### Fixed
 - **WSL2 GPU passthrough — `nvidia-smi` worked but `torch.cuda.is_available()` returned `False` inside the container.** Root cause: `nvidia-container-runtime` cherry-picks WSL driver files into the container and historically missed `libnvdxgdmal.so.1` (the DXG DMA helper). Without it, the WSL `libcuda.so.1` proxy returns `Error 500: named symbol not found` on the first `cuInit()` call — silently breaking Rerank/FAISS-GPU/PaddleOCR-GPU inside the container while `nvidia-smi` reports the GPU fine. Fix: `scripts/docker/start.sh` now bind-mounts `/usr/lib/wsl:/usr/lib/wsl:ro` when running under WSL (`grep -qi microsoft /proc/version`). Native Linux deployments are unaffected. Full write-up in `docs/wsl-docker-gpu-pitfall.md`.
@@ -113,8 +118,8 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - **CI shell job** in `.github/workflows/ci.yml` running alongside backend (Python 3.11/3.12) and frontend (Node 20) jobs.
 
 ### Changed
-- **Entrypoint redirects BISHON_DB/logs** from source-relative paths to `/opt/bishon-data/` top via symlinks. Fixes two latent issues: (1) publish replacing `bishon/` would wipe user data; (2) WSL `/mnt/*` source dirs trigger SQLite WAL I/O errors via 9p/NTFS.
-- **`.env` injected via `docker run --env-file`** so the config file lives at `/opt/bishon-data/.env` (publish-safe sibling of source) while `model_config.py`'s `load_dotenv(root_path/.env)` keeps working as a no-op.
+- **Entrypoint redirects BISHON_DB/logs** from source-relative paths to `/opt/bishon-home/` top via symlinks. Fixes two latent issues: (1) publish replacing `bishon/` would wipe user data; (2) WSL `/mnt/*` source dirs trigger SQLite WAL I/O errors via 9p/NTFS.
+- **`.env` injected via `docker run --env-file`** so the config file lives at `/opt/bishon-home/.env` (publish-safe sibling of source) while `model_config.py`'s `load_dotenv(root_path/.env)` keeps working as a no-op.
 - **`build.sh` size output**: replaced `divf` Go template function (unavailable on older Docker) with awk.
 - **`Dockerfile.cuda` miniconda download**: multi-source fallback (Tsinghua mirror first, official second) to handle China network conditions.
 - **`Dockerfile.cuda` HEALTHCHECK `start-period`**: bumped 120s → 180s to match `start.sh`'s polling window.

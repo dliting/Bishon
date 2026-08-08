@@ -264,6 +264,7 @@ fi
 # --- 6. Record installed version ---------------------------------------------
 echo "$IMAGE_TAG" > "$HOST_DIR/.image-tag"
 echo "$ACCELERATOR" > "$HOST_DIR/.accelerator"
+echo "bridge" > "$HOST_DIR/.network"
 
 # --- 7. Next steps -----------------------------------------------------------
 cat <<EOF
@@ -272,10 +273,12 @@ cat <<EOF
    accelerator: $ACCELERATOR
 
 Next steps:
-  1. Edit $HOST_DIR/.env — set OPENAI_API_BASE and EMBEDDING_API_BASE to
-     explicit reachable URLs (NOT host.docker.internal).
+  1. Edit $HOST_DIR/.env — set OPENAI_API_BASE and EMBEDDING_API_BASE.
+     - Docker bridge mode: use Docker bridge IP (e.g. http://172.17.0.1:8000/v1)
+     - Docker host mode (--network host): localhost works
   2. Start the service:
        bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
+     Add --network host if LLM/Embedding services run on the same host.
 EOF
 if [ -z "$NODE_TAR" ] && [ ! -d "$HOST_DIR/node-env" ]; then
     cat <<EOF

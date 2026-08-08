@@ -97,7 +97,7 @@ bash /opt/bishon-home/scripts/docker/upgrade.sh \
   --release /opt/bishon-release/<new-ver>/bishon-release-<new-ver>.tar.gz
 
 bash /opt/bishon-home/scripts/docker/stop.sh --host-dir /opt/bishon-home
-bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home
+bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home [--network host] [--network host]
 ```
 
 ### 增量升级（Python 依赖变更）
@@ -109,7 +109,7 @@ bash /opt/bishon-home/scripts/docker/upgrade.sh \
   --pyenv /opt/bishon-release/<new-ver>/bishon-pyenv-<new-ver>.tar.gz
 
 bash /opt/bishon-home/scripts/docker/stop.sh --host-dir /opt/bishon-home
-bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home
+bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home [--network host] [--network host]
 ```
 
 ### 升级 Node 工具链
@@ -135,7 +135,7 @@ bash /opt/bishon-home/scripts/docker/upgrade.sh \
   --release /opt/bishon-release/<old-ver>/bishon-release-<old-ver>.tar.gz \
   --pyenv /opt/bishon-release/<old-ver>/bishon-pyenv-<old-ver>.tar.gz
 
-bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home
+bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home [--network host]
 ```
 
 ## 校验文件完整性

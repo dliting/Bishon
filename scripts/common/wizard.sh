@@ -219,7 +219,7 @@ case "$MODE" in
         fi
 
         [ -n "$RELEASE_TAR" ] || RELEASE_TAR=$(ask_path \
-            "release tarball path? (from make-release.sh; carries env + source)" \
+            "release tarball path? (from make-release.sh; carries source + scripts)" \
             "$RELEASE_TAR")
 
         if [ "$MODE" = "docker-online" ]; then

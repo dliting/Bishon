@@ -243,6 +243,7 @@ Preserved (NEVER touched):
 Next step — restart the container:
    bash $HOST_DIR/scripts/docker/stop.sh  --host-dir $HOST_DIR
    bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
+   (add --network host if LLM/Embedding services run on the same host)
 EOF
 
 # Report any stale backups that could not be deleted (root-owned __pycache__).

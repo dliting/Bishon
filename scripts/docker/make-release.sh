@@ -502,4 +502,5 @@ log "  bash deploy.sh"
 # tarballs and must be removed to keep the directory clean for distribution.
 log "cleaning up staging directories"
 rm -rf "$DIST/bishon" "$DIST/models" "$DIST/node-env" "$DIST/scripts"
+rm -rf "$DIST"/.tmp.*
 log "release directory ready for distribution: $DIST"

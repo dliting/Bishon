@@ -10,7 +10,7 @@
 set -euo pipefail
 
 HOST_DIR=""
-NETWORK="bridge"
+NETWORK=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2"; shift 2 ;;
@@ -60,6 +60,8 @@ HOST_DIR="$(readlink -f "$HOST_DIR")"
 
 IMAGE="$(cat "$HOST_DIR/.image-tag")"
 ACC="$(cat "$HOST_DIR/.accelerator" 2>/dev/null || echo cuda)"
+# Network mode: CLI --network overrides .network file, default is bridge.
+NETWORK="${NETWORK:-$(cat "$HOST_DIR/.network" 2>/dev/null || echo bridge)}"
 
 command -v docker >/dev/null || die "docker not found on PATH"
 command -v curl >/dev/null   || die "curl not found on PATH"

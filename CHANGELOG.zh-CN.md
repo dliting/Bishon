@@ -40,7 +40,7 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - **`scripts/common/preflight.sh --mode`** —— `release`（默认） | `docker-online` | `docker-offline` | `bare-metal`。Docker 镜像检查按模式调整（bare-metal 完全跳过；docker-online 只检查 Docker 是否可用）。还新增了 `--src-only` 子模式，给 release 打包用。
 - **`scripts/common/download-models.sh`** —— 给新开发/部署同学用的幂等模型下载脚本。默认走 `hf-mirror.com`（HuggingFace 国内镜像）；PaddleOCR 模型通过 `paddleocr` 包自动拉取。Flags：`--target`、`--dry-run`、`--offline <tar>`、`--skip-rerank`、`--skip-paddleocr`。读取 `HF_ENDPOINT`、`RERANK_REPO`、`BISHON_PY` 环境变量。
 - **模型 tarball 独立打包**：`make-release.sh` 现在额外产出一个 `bishon-models-<ver>.tar.gz`，和主 release tarball 分开。`install.sh --models <tar>` 可选接收 —— 不带模型也能装（Rerank 关闭，OCR 启动时告警）。
-- **`make-release.sh --skip-env --skip-models --skip-image`**：三个 skip 都加上时，5 秒内产出一个仅含源码的小 tarball，方便快速验证打包流程。不用每次都等 12 GB 的 env/models/image 拷贝。
+- **`make-release.sh --skip-pyenv --skip-models --skip-image`**（v2.2.0 由 `--skip-env` 重命名）：三个 skip 都加上时，5 秒内产出一个仅含源码的小 tarball，方便快速验证打包流程。不用每次都等 12 GB 的 env/models/image 拷贝。
 - **SHA256 校验**：每个 tarball 现在都附带 `.sha256`，部署侧可以校验完整性。
 - **`bishon-cuda:latest` tag**：`build-image.sh` 现在同时打 `latest` tag，方便 CI/自动化。
 - **GPU 冒烟测试（`tests/backend/integration/test_gpu_smoke.py`）** —— 5 个用例验证 torch + FAISS + Qwen3-Reranker 在装好后都能看到 GPU。CPU-only 机器上自动 skip。能抓出 torch+cu130 vs driver-CUDA-12.6 不匹配这种"GPU 静默用不了"的问题。

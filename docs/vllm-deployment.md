@@ -313,7 +313,8 @@ docker info | grep -i runtime
 ### 9. 启动 Bishon
 
 ```bash
-bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home
+# vLLM 与 Bishon 同机时推荐 --network host，.env 中可用 localhost
+bash /opt/bishon-home/scripts/docker/start.sh --host-dir /opt/bishon-home --network host
 ```
 
 ### 10. 验证
@@ -365,22 +366,31 @@ curl http://localhost:8777/api/health
 
 **解决方案**：重启机器。如仍不匹配，重新安装 NVIDIA 驱动。
 
-### 6. host.docker.internal 在 Linux Docker 下不解析
+### 6. 容器内无法访问宿主机 LLM 服务
 
-**现象**：Bishon Docker 容器内无法解析 `host.docker.internal`，LLM 服务报 "Temporary failure in name resolution"。
+**现象**：Bishon Docker 容器内无法连接宿主机上的 LLM/Embedding 服务，报 "Connection refused"。
 
-**原因**：`host.docker.internal` 是 Docker Desktop（macOS/Windows）的自动功能，原生 Linux Docker 不支持。start.sh 只在 WSL2 下添加 `--add-host`，原生 Linux 下不添加。
+**原因**：Docker bridge 模式下，容器有独立网络命名空间，`localhost` 指向容器自身而非宿主机。
 
-**解决方案**：在 `.env` 中使用 Docker 网桥 IP（通常是 `172.17.0.1`）替代 `host.docker.internal`：
-```bash
-# 查询网桥 IP
-ip -4 addr show docker0 | grep inet
-# 通常是 172.17.0.1
-OPENAI_API_BASE=http://172.17.0.1:8000/v1
-EMBEDDING_API_BASE=http://172.17.0.1:8001/v1/embeddings
-```
+**解决方案**（三选一）：
 
-**改进建议**：start.sh 应在原生 Linux 下也添加 `--add-host host.docker.internal:172.17.0.1`，使 `.env` 中 `host.docker.internal` 在所有平台都能工作。
+1. **`--network host`**（推荐，LLM 与 Bishon 同机时）：容器共享宿主网络栈，`.env` 中直接用 `localhost`。
+   ```bash
+   bash start.sh --host-dir /opt/bishon-home --network host
+   ```
+   ```bash
+   OPENAI_API_BASE=http://localhost:8000/v1
+   EMBEDDING_API_BASE=http://localhost:8001/v1/embeddings
+   ```
+
+2. **Docker 网桥 IP**（bridge 模式）：在 `.env` 中使用网桥 IP（通常是 `172.17.0.1`）。
+   ```bash
+   ip -4 addr show docker0 | grep inet   # 查询网桥 IP
+   OPENAI_API_BASE=http://172.17.0.1:8000/v1
+   EMBEDDING_API_BASE=http://172.17.0.1:8001/v1/embeddings
+   ```
+
+3. **远程服务**：使用 LLM 服务所在机器的实际 IP。
 
 ### 7. tiktoken 离线缓存缺失
 

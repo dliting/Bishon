@@ -350,7 +350,7 @@ EOF
 }
 
 @test "start.sh defaults to bridge network" {
-    grep -qE 'NETWORK="?bridge"?' "$REPO_ROOT/scripts/docker/start.sh"
+    grep -qE 'NETWORK=.*bridge|echo bridge' "$REPO_ROOT/scripts/docker/start.sh"
 }
 
 @test "start.sh uses -p in bridge mode" {

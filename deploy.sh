@@ -181,6 +181,8 @@ case "$MODE" in
         fi
         [ -n "$PYENV_TAR" ] && INSTALL_ARGS+=(--pyenv "$PYENV_TAR")
         bash "$SCRIPT_DIR/scripts/docker/install.sh" "${INSTALL_ARGS[@]}"
+        # Persist network mode so start.sh reads it on subsequent restarts.
+        echo "$NETWORK" > "$HOST_DIR/.network"
         if $START_AFTER; then
             bash "$SCRIPT_DIR/scripts/docker/start.sh" --host-dir "$HOST_DIR" --network "$NETWORK"
         fi

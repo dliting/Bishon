@@ -6,6 +6,10 @@ from copy import deepcopy
 from itertools import groupby
 from threading import Lock
 
+from bishon_kernel.utils.gpu_utils import preload_cublaslt
+
+preload_cublaslt()
+
 import faiss
 import numpy as np
 

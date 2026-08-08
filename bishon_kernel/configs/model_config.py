@@ -18,6 +18,35 @@ UPLOAD_ROOT_PATH = os.path.join(root_path, "BISHON_DB", "content")
 os.makedirs(UPLOAD_ROOT_PATH, exist_ok=True)
 logging.info("UPLOAD_ROOT_PATH: %s", UPLOAD_ROOT_PATH)
 
+# Models directory — shared across Docker and bare-metal modes.
+# In Docker mode: entrypoint.sh sets MODELS_DIR=/opt/bishon-home/models.
+# In bare-metal mode: MODELS_DIR is unset, defaults to root_path/models/.
+models_dir = os.getenv("MODELS_DIR", os.path.join(root_path, "models"))
+logging.info("models_dir: %s", models_dir)
+
+
+def resolve_model_path(raw_path: str) -> str:
+    """Resolve a model path relative to models_dir.
+
+    Handles both old-style paths (``./models/X``, ``models/X``) and
+    new-style paths (``X``).  Absolute paths are returned unchanged.
+
+    This ensures backward compatibility with .env files that still use
+    ``RERANK_MODEL_PATH=./models/Qwen3-Reranker-0.6B``.
+    """
+    if os.path.isabs(raw_path):
+        return raw_path
+    # Strip leading "./" prefix that was needed before MODELS_DIR was introduced.
+    # Old: "./models/X" or "models/X" → "X".
+    # Use explicit prefix checks (not lstrip) to avoid stripping dot-prefixed
+    # model names like ".hidden-model".
+    cleaned = raw_path
+    while cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    if cleaned.startswith("models/") or cleaned.startswith("models\\"):
+        cleaned = cleaned[len("models/"):].lstrip("/\\")
+    return os.path.join(models_dir, cleaned)
+
 # LLM streaming response
 STREAMING = True
 

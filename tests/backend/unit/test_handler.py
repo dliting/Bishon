@@ -256,13 +256,16 @@ class TestDownloadFile:
         return file_id
 
     def test_download_file_success(self, download_client):
-        """Normal file download returns file content."""
+        """Normal file download returns file content with Content-Disposition attachment."""
         client, kb_mgr, upload_dir = download_client
         file_id = self._seed_file(kb_mgr, upload_dir, file_content=b"traceability test")
 
         resp = client.get(f"/api/local_doc_qa/download_file/{file_id}")
         assert resp.status_code == 200
         assert resp.content == b"traceability test"
+        assert "content-disposition" in resp.headers
+        assert resp.headers["content-disposition"].startswith("attachment")
+        assert "test.txt" in resp.headers["content-disposition"]
 
     def test_download_file_not_found_in_db(self, download_client):
         """Non-existent file_id returns 404."""
@@ -338,6 +341,25 @@ class TestDownloadFile:
             "INSERT INTO File (file_id, kb_id, file_name, status, timestamp, deleted) "
             "VALUES (?, ?, ?, 'green', '202605211000', 0)",
             (file_id, "KB" + "c" * 28, "../../../etc/passwd"), commit=True,
+        )
+
+        resp = client.get(f"/api/local_doc_qa/download_file/{file_id}")
+        assert resp.status_code == 404
+        assert resp.json()["code"] == CODE_FILE_NOT_FOUND
+
+    def test_download_file_name_none(self, download_client):
+        """file_name=None in DB returns 404 instead of crashing."""
+        client, kb_mgr, upload_dir = download_client
+        file_id = "n" * 32
+        kb_mgr.add_user_("testuser")
+        kb_mgr._execute(
+            "INSERT INTO KnowledgeBase (kb_id, user_id, kb_name) VALUES (?, ?, ?)",
+            ("KB" + "d" * 28, "testuser", "testkb"), commit=True,
+        )
+        kb_mgr._execute(
+            "INSERT INTO File (file_id, kb_id, file_name, status, timestamp, deleted) "
+            "VALUES (?, ?, ?, 'green', '202605211000', 0)",
+            (file_id, "KB" + "d" * 28, None), commit=True,
         )
 
         resp = client.get(f"/api/local_doc_qa/download_file/{file_id}")

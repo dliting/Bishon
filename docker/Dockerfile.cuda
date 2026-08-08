@@ -3,8 +3,8 @@
 # Design notes:
 #   - miniconda3 base lives in the image (tied to container glibc).
 #   - The bishon conda env is NOT baked in; it ships in the release tarball
-#     and is bind-mounted at /opt/bishon-data/python-env. The entrypoint
-#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-data/python-env so
+#     and is bind-mounted at /opt/bishon-home/python-env. The entrypoint
+#     symlinks /opt/miniconda3/envs/bishon -> /opt/bishon-home/python-env so
 #     baked-in absolute paths inside the env still resolve.
 #   - Timezone is Asia/Shanghai (avoids container UTC vs business local-time skew).
 #   - HEALTHCHECK uses the in-process /api/health endpoint.
@@ -23,7 +23,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # System libs required by torch / paddlepaddle / paddleocr / opencv at runtime.
 # fonts-noto-cjk needed for OCR on Chinese text.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Use Aliyun mirror for faster apt downloads from China.
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libgl1 \
         libglib2.0-0 \
@@ -59,7 +61,7 @@ RUN MINICONDA_URLS="https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Mini
     && ln -s "$CONDA_DIR/etc/profile.d/conda.sh" /etc/profile.d/conda.sh
 
 # Stub launcher baked into the image. Real entrypoint lives at
-# /opt/bishon-data/bishon/docker/entrypoint.sh (bind-mounted from host-dir)
+# /opt/bishon-home/bishon/docker/entrypoint.sh (bind-mounted from host-dir)
 # so it can be upgraded without rebuilding the image.
 COPY launcher.sh /launcher.sh
 # CRLF guard: if launcher.sh was edited on Windows it may have CR endings,

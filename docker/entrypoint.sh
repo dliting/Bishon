@@ -6,7 +6,7 @@
 # independently testable (bats source + call).
 #
 # The container is started with:
-#   -v <host-dir>:/opt/bishon-data
+#   -v <host-dir>:/opt/bishon-home
 #   --env-file <host-dir>/.env
 #
 # Fail loudly (exit non-zero) on any precondition violation — better than
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-DATA_ROOT=/opt/bishon-data
+DATA_ROOT=/opt/bishon-home
 ENTRYPOINT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB_DIR="$ENTRYPOINT_DIR/entrypoint_lib"
 
@@ -27,20 +27,28 @@ die() { echo "[entrypoint] FATAL: $*" >&2; exit 1; }
 [ -d "$DATA_ROOT/bishon/bishon_kernel" ]  || die "$DATA_ROOT/bishon/bishon_kernel missing. Run upgrade.sh."
 [ -d "$DATA_ROOT/models" ]                || die "$DATA_ROOT/models missing. Run install.sh."
 
-# --- 2. Source lib modules --------------------------------------------------
+# --- 2. Set environment for model paths and offline cache --------------------
+# Set these before sourcing lib modules so any future code that references
+# them sees the correct values. MODELS_DIR tells model_config.py where to
+# find model files; TIKTOKEN_CACHE_DIR avoids network downloads at runtime.
+export MODELS_DIR=$DATA_ROOT/models
+export TIKTOKEN_CACHE_DIR=$DATA_ROOT/models/tiktoken_cache
+mkdir -p "$TIKTOKEN_CACHE_DIR"
+
+# --- 3. Source lib modules --------------------------------------------------
 [ -d "$LIB_DIR" ] || die "$LIB_DIR missing — release tarball incomplete."
 source "$LIB_DIR/bind_python_env.sh"
 source "$LIB_DIR/redirect_runtime_dirs.sh"
 source "$LIB_DIR/bind_node_env.sh"
 source "$LIB_DIR/frontend_rebuild.sh"
 
-# --- 3. Run setup steps in order --------------------------------------------
+# --- 4. Run setup steps in order --------------------------------------------
 bind_python_env           # existing: symlink python-env into miniconda3 path
-redirect_runtime_dirs     # existing: redirect BISHON_DB + logs to host-dir top
-bind_node_env             # NEW: no-op if $DATA_ROOT/node-env/ missing
-maybe_rebuild_frontend    # NEW: no-op if Node not bound
+redirect_runtime_dirs     # redirect BISHON_DB + logs to host-dir top
+bind_node_env             # no-op if $DATA_ROOT/node-env/ missing
+maybe_rebuild_frontend    # no-op if Node not bound
 
-# --- 4. Launch uvicorn ------------------------------------------------------
+# --- 5. Launch uvicorn ------------------------------------------------------
 PY="/opt/miniconda3/envs/bishon/bin/python"
 [ -x "$PY" ] || die "$PY not executable. python-env may be corrupted."
 cd "$DATA_ROOT/bishon"

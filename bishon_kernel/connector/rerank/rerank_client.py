@@ -7,10 +7,11 @@ Supports two model families:
 import logging
 import os
 
-from bishon_kernel.configs.model_config import root_path
+from bishon_kernel.configs.model_config import models_dir, resolve_model_path
 
-_raw_model_path = os.getenv("RERANK_MODEL_PATH", "/opt/Bishon/V2/models/Qwen3-Reranker-0.6B")
-RERANK_MODEL_PATH = _raw_model_path if os.path.isabs(_raw_model_path) else os.path.join(root_path, _raw_model_path)
+_default_rerank = os.path.join(models_dir, "Qwen3-Reranker-0.6B")
+_raw_model_path = os.getenv("RERANK_MODEL_PATH", _default_rerank)
+RERANK_MODEL_PATH = resolve_model_path(_raw_model_path)
 RERANK_ENABLED = os.getenv("RERANK_ENABLED", "False").lower() in ("true", "1", "yes")
 
 LOCAL_RERANK_MAX_LENGTH = 8192

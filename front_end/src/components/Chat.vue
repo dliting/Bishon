@@ -156,6 +156,7 @@ import DefaultModal from './DefaultModal.vue';
 import html2canvas from 'html2canvas';
 import { userId } from '@/services/urlConfig';
 import { getLanguage } from '@/language/index';
+import { aDownLoad } from '@/utils/utils';
 
 const common = getLanguage().common;
 
@@ -418,7 +419,7 @@ const openSourceFile = (sourceItem: IDataSourceItem) => {
   if (sourceItem.file_name.startsWith('http')) {
     window.open(sourceItem.file_name, '_blank');
   } else if (sourceItem.file_id) {
-    window.open(`${apiBase}/local_doc_qa/download_file/${sourceItem.file_id}`, '_blank');
+    aDownLoad(`${apiBase}/local_doc_qa/download_file/${sourceItem.file_id}`, sourceItem.file_name);
   }
 };
 

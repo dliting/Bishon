@@ -23,7 +23,7 @@ async def _upload_file(api_client, kb_id, filename, content, user_id="testuser")
 @pytest.mark.asyncio
 class TestFileDownload:
     async def test_download_uploaded_file(self, api_client):
-        """After uploading, downloading by file_id returns the same content."""
+        """After uploading, downloading by file_id returns the same content with Content-Disposition attachment."""
         content = b"traceability integration test content"
         kb_id   = await _create_kb(api_client)
         file_id = await _upload_file(api_client, kb_id, "trace_test.txt", content)
@@ -31,6 +31,9 @@ class TestFileDownload:
         resp = await api_client.get(f"/api/local_doc_qa/download_file/{file_id}")
         assert resp.status_code == 200
         assert resp.content == content
+        assert "content-disposition" in resp.headers
+        assert resp.headers["content-disposition"].startswith("attachment")
+        assert "trace_test.txt" in resp.headers["content-disposition"]
 
     async def test_download_nonexistent_file(self, api_client):
         """A non-existent file_id returns 404."""

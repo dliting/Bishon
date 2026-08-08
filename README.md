@@ -199,7 +199,7 @@ See `.env.example` for the full template. Highlights:
 | `LLM_PROVIDER` | Adapter selection: `openai` / `ollama` / `minimax` | `openai` |
 | `EMBEDDING_API_BASE` | Embedding service URL | `http://localhost:11434/v1/embeddings` |
 | `EMBEDDING_MODEL_NAME` | Embedding model | `qwen3-embedding:0.6b` |
-| `RERANK_MODEL_PATH` | Local Rerank model path | `models/Qwen3-Reranker-0.6B` |
+| `RERANK_MODEL_PATH` | Local Rerank model path (relative to models dir) | `Qwen3-Reranker-0.6B` |
 | `RERANK_ENABLED` | Enable in-process rerank | `false` |
 | `FAISS_EMBEDDING_DIM` | Must match your embedding model | `1024` |
 | `DOC_SCORE_THRESHOLD` | Min mean relevance for docs returned | `0.65` |

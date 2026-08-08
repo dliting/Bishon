@@ -2,7 +2,8 @@
 # make-release.sh — assemble the offline release bundle for Bishon V2.
 #
 # Produces under <repo-root>/dist/:
-#   bishon-release-<version>.tar.gz    — source + python-env + models + scripts + .env.example
+#   bishon-release-<version>.tar.gz    — source + scripts (no python-env, no models)
+#   bishon-pyenv-<version>.tar.gz      — python conda env (separate tarball)
 #   bishon-cuda-image-<version>.tar    — docker save of bishon-cuda:<version>
 #
 # Usage:
@@ -22,7 +23,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 VERSION=""
 CONDA_ROOT="${CONDA_ROOT:-/opt/miniconda3}"
 OUTPUT_DIR=""           # default: $REPO_ROOT/dist
-SKIP_ENV=false
+SKIP_PYENV=false
 SKIP_MODELS=false
 SKIP_IMAGE=false
 SKIP_FRONTEND=false
@@ -35,7 +36,7 @@ while [[ $# -gt 0 ]]; do
         --conda-root)     CONDA_ROOT="$2"; shift 2 ;;
         --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
         --force)          FORCE=true;      shift ;;
-        --skip-env)       SKIP_ENV=true;       shift ;;
+        --skip-pyenv)     SKIP_PYENV=true;     shift ;;
         --skip-models)    SKIP_MODELS=true;    shift ;;
         --skip-image)     SKIP_IMAGE=true;     shift ;;
         --skip-frontend)  SKIP_FRONTEND=true;  shift ;;
@@ -52,7 +53,7 @@ SOURCE
   --output-dir <path>  Where release artifacts go (default: <repo>/dist).
 
 COMPONENT SELECTION (all included by default)
-  --skip-env           Skip the python-env (conda env copy ~7 GB).
+  --skip-pyenv         Skip the python-env tarball (conda env copy ~7 GB).
   --skip-models        Skip models (Qwen3-Reranker + PaddleOCR ~2.5 GB).
   --skip-image         Skip the docker image tar (~3 GB).
   --skip-frontend      Skip the frontend build (use if dist is already built).
@@ -73,7 +74,8 @@ EXISTING RELEASE DIR
                        output directory already exists.
 
 Outputs (under --output-dir / default dist/):
-  bishon-release-<ver>.tar.gz        source + env + models + scripts
+  bishon-release-<ver>.tar.gz        source + scripts (no python-env, no models)
+  bishon-pyenv-<ver>.tar.gz          python conda env (for install/upgrade --pyenv)
   bishon-models-<ver>.tar.gz         models only (for install/upgrade reuse)
   bishon-node-<ver>.tar.gz           Node binary + node_modules (optional)
   bishon-cuda-image-<ver>.tar        docker save tarball
@@ -97,6 +99,7 @@ ENV_SRC="$CONDA_ROOT/envs/bishon"
 mkdir -p "$OUTPUT_DIR"
 DIST="$OUTPUT_DIR/release-$VERSION"
 DIST_TGZ="$DIST/bishon-release-$VERSION.tar.gz"
+PYENV_TGZ="$DIST/bishon-pyenv-$VERSION.tar.gz"
 MODELS_TGZ="$DIST/bishon-models-$VERSION.tar.gz"
 NODE_TGZ="$DIST/bishon-node-$VERSION.tar.gz"
 IMAGE_TAR="$DIST/bishon-cuda-image-$VERSION.tar"
@@ -116,7 +119,7 @@ die() { bishon_die "$@"; }
 
 # --- 0. Pre-flight checks (delegates to scripts/docker/preflight.sh) ---------
 PREFLIGHT_ARGS=(--version "$VERSION")
-if $SKIP_ENV && $SKIP_MODELS && $SKIP_IMAGE; then
+if $SKIP_PYENV && $SKIP_MODELS && $SKIP_IMAGE; then
     PREFLIGHT_ARGS+=(--src-only)
 fi
 bash "$(dirname "$0")/../common/preflight.sh" "${PREFLIGHT_ARGS[@]}" || \
@@ -130,20 +133,27 @@ if [ -d "$DIST" ] && ! $FORCE; then
 fi
 mkdir -p "$DIST"
 
-# --- 2. python-env (one env, slim) — skip with --skip-env ------------------
-if $SKIP_ENV; then
-    log "skipping python-env (--skip-env)"
-    mkdir -p "$DIST/python-env"
-    # Sentinel: install.sh checks for bin/ first; if missing, looks for this
-    # file to confirm the tarball is intentionally source-only.
-    echo "source-only release; python-env not included" > "$DIST/python-env/.skip-env"
+# --- 2. python-env (separate tarball) — skip with --skip-pyenv ---------------
+if $SKIP_PYENV; then
+    log "skipping python-env (--skip-pyenv)"
 else
     log "copying python-env (~$(du -sh "$ENV_SRC" | cut -f1))"
+    PYENV_STAGING="$(mktemp -d -p "$DIST" .tmp.pyenv.XXXXXX)"
     rsync -a \
         --exclude '__pycache__' \
         --exclude '*.pyc' \
         --exclude '*.pyo' \
-        "$ENV_SRC/" "$DIST/python-env/"
+        --exclude 'nvidia/cu13' \
+        --exclude 'vllm' \
+        --exclude 'spacy' \
+        --exclude 'en_core_web*' \
+        --exclude 'unstructured' \
+        "$ENV_SRC/" "$PYENV_STAGING/python-env/"
+    log "creating $PYENV_TGZ"
+    (cd "$PYENV_STAGING" && tar -czf "$PYENV_TGZ.tmp" python-env && mv "$PYENV_TGZ.tmp" "$PYENV_TGZ")
+    (cd "$DIST" && sha256sum "$(basename "$PYENV_TGZ")" > "$(basename "$PYENV_TGZ").sha256")
+    rm -rf "$PYENV_STAGING"
+    log "python-env tarball: $(du -sh "$PYENV_TGZ" | cut -f1)"
 fi
 
 # --- 3. Source code (MANIFEST-driven) ----------------------------------------
@@ -296,6 +306,16 @@ else
     log "copying models (~$(du -sh "$REPO_ROOT/models" 2>/dev/null | cut -f1 || echo '?'))"
     mkdir -p "$DIST/models"
     rsync -a --exclude '.git' "$REPO_ROOT/models/" "$DIST/models/"
+
+    # Pre-generate tiktoken cache for offline deployment.
+    # tiktoken downloads encoding files on first use; without internet
+    # this fails silently and breaks document processing.
+    log "pre-generating tiktoken cache for offline deployment"
+    mkdir -p "$DIST/models/tiktoken_cache"
+    TIKTOKEN_CACHE_DIR="$DIST/models/tiktoken_cache" \
+        "$ENV_SRC/bin/python" -c "import tiktoken; tiktoken.get_encoding('cl100k_base')" \
+        2>/dev/null && log "  tiktoken cl100k_base cached ($(du -sh "$DIST/models/tiktoken_cache" | cut -f1))" \
+        || log "  WARNING: tiktoken cache generation failed (offline may break)"
     log "creating $MODELS_TGZ"
     tar -czf "$MODELS_TGZ" -C "$DIST" models
     (cd "$(dirname "$MODELS_TGZ")" && sha256sum "$(basename "$MODELS_TGZ")" > "$(basename "$MODELS_TGZ").sha256")
@@ -324,18 +344,119 @@ cp "$REPO_ROOT/run_all_tests.sh"        "$DIST/"
 cp "$REPO_ROOT/.env.example" "$DIST/"
 cp "$REPO_ROOT/VERSION" "$DIST/"
 
+# Generate README.md with file inventory and quick-start instructions.
+BUILD_DATE="$(date +%Y-%m-%d)"
+cat > "$DIST/README.md" <<EOREADME
+# Bishon V2 离线部署包
+
+版本: $VERSION
+构建日期: $BUILD_DATE
+
+## 文件清单
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| \`bishon-cuda-image-$VERSION.tar\` | ~3.1G | Docker 镜像 (CUDA 12.6 + Ubuntu 22.04 + Miniconda) |
+| \`bishon-release-$VERSION.tar.gz\` | ~2M | Bishon 源码 + 前端 + 部署脚本 (不含 python-env) |
+| \`bishon-pyenv-$VERSION.tar.gz\` | ~7G | Python 运行环境 (conda env, 首次安装必需) |
+| \`bishon-models-$VERSION.tar.gz\` | ~1G | Reranker + OCR 模型权重 |
+| \`bishon-node-$VERSION.tar.gz\` | ~160M | Node.js + 前端依赖 (可选, 用于前端热重建) |
+| \`*.sha256\` | — | 各文件 SHA256 校验 |
+| \`deploy.sh\` | — | 部署入口脚本 (交互式向导) |
+| \`VERSION\` | — | 版本号 |
+
+## 环境要求
+
+- **OS**: Ubuntu 22.04 (WSL2 或原生 Linux)
+- **GPU**: NVIDIA GPU + CUDA 12.6 驱动 + NVIDIA Container Toolkit
+- **Docker**: 20.10+
+- **磁盘**: >= 40G 可用空间 (ext4 文件系统, 不能是 9p/NTFS 挂载)
+- **推理服务**: OpenAI 兼容的 LLM + Embedding 服务 (vLLM / Ollama 等)
+
+## 快速部署
+
+\`\`\`bash
+# 1. 将整个目录拷贝到目标机器
+scp -r release-$VERSION/ user@target:/opt/bishon-deploy/
+
+# 2. 在目标机器上运行部署向导
+cd /opt/bishon-deploy/release-$VERSION/
+bash deploy.sh
+\`\`\`
+
+## 非交互式部署 (自动化/CI)
+
+\`\`\`bash
+bash deploy.sh --non-interactive \\
+  --mode docker-offline \\
+  --host-dir /opt/bishon-home \\
+  --release bishon-release-$VERSION.tar.gz \\
+  --pyenv bishon-pyenv-$VERSION.tar.gz \\
+  --image bishon-cuda-image-$VERSION.tar \\
+  --models bishon-models-$VERSION.tar.gz
+\`\`\`
+
+## 推理服务配置
+
+Bishon 通过 \`.env\` 中的以下变量连接推理服务 (部署后在 host-dir 中编辑):
+
+\`\`\`bash
+# LLM (OpenAI 兼容 API)
+OPENAI_API_BASE=http://localhost:8000/v1       # vLLM / Ollama 地址
+OPENAI_API_MODEL_NAME=Qwen3.5-4B
+
+# Embedding
+EMBEDDING_API_BASE=http://localhost:8001/v1/embeddings
+EMBEDDING_MODEL_NAME=Qwen3-Embedding-0.6B
+\`\`\`
+
+> Docker 模式下推理服务运行在宿主机时, 需根据网络模式修改地址:
+> - bridge (默认): 改为 Docker 网桥 IP, 如 \\\`http://172.17.0.1:8000/v1\\\`
+> - host (\\\`--network host\\\`): 可直接用 \\\`localhost\\\`
+> - 远程服务: 使用实际 IP
+
+## 常用操作
+
+\`\`\`bash
+# 启动
+bash start-docker.sh --host-dir /opt/bishon-home
+
+# 停止
+bash stop-docker.sh --host-dir /opt/bishon-home
+
+# 查看日志
+docker logs -f bishon
+
+# 健康检查
+curl http://localhost:8777/api/health
+\`\`\`
+
+## 校验文件完整性
+
+\`\`\`bash
+for f in *.sha256; do sha256sum -c "\$f"; done
+\`\`\`
+EOREADME
+log "generated README.md"
+
 # --- 6. Main tarball ---------------------------------------------------------
 # Write the tarball outside $DIST/ then mv it in, so tar doesn't see its own
 # output being created (avoids "file changed as we read it" warnings).
 TMP_TGZ="$OUTPUT_DIR/bishon-release-$VERSION.tar.gz.tmp"
 log "creating $DIST_TGZ (~this step is slow due to gzip)"
 tar -czf "$TMP_TGZ" -C "$DIST" \
+    --exclude 'bishon-release-*.tar.gz'        \
+    --exclude 'bishon-release-*.tar.gz.sha256' \
     --exclude 'bishon-models-*.tar.gz'        \
     --exclude 'bishon-models-*.tar.gz.sha256' \
+    --exclude 'bishon-pyenv-*.tar.gz'         \
+    --exclude 'bishon-pyenv-*.tar.gz.sha256'  \
     --exclude 'bishon-node-*.tar.gz'          \
     --exclude 'bishon-node-*.tar.gz.sha256'   \
     --exclude 'bishon-cuda-image-*.tar'       \
     --exclude 'node-env'                       \
+    --exclude 'python-env'                     \
+    --exclude 'models'                         \
     .
 mv "$TMP_TGZ" "$DIST_TGZ"
 (cd "$(dirname "$DIST_TGZ")" && sha256sum "$(basename "$DIST_TGZ")" > "$(basename "$DIST_TGZ").sha256")
@@ -352,6 +473,10 @@ fi
 log "done. Artifacts:"
 log "  $DIST_TGZ       ($(du -h "$DIST_TGZ" | cut -f1))"
 log "  $DIST_TGZ.sha256"
+if ! $SKIP_PYENV && [ -f "$PYENV_TGZ" ]; then
+    log "  $PYENV_TGZ       ($(du -h "$PYENV_TGZ" | cut -f1))"
+    log "  $PYENV_TGZ.sha256"
+fi
 if ! $SKIP_MODELS; then
     log "  $MODELS_TGZ     ($(du -h "$MODELS_TGZ" | cut -f1))"
     log "  $MODELS_TGZ.sha256"
@@ -369,3 +494,13 @@ log "Distribute the whole directory to the deploy host:"
 log "  $DIST"
 log "On the deploy host, cd into it and run:"
 log "  bash deploy.sh"
+
+# --- 9. Cleanup staging directories ------------------------------------------
+# The release directory should only contain deployable artifacts (tarballs,
+# checksums, README, deploy scripts). Intermediate staging dirs (bishon/,
+# models/, node-env/, scripts/) are already packed into their respective
+# tarballs and must be removed to keep the directory clean for distribution.
+log "cleaning up staging directories"
+rm -rf "$DIST/bishon" "$DIST/models" "$DIST/node-env" "$DIST/scripts"
+rm -rf "$DIST"/.tmp.*
+log "release directory ready for distribution: $DIST"

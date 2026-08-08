@@ -170,7 +170,7 @@ start.bat         # Windows
 | `LLM_PROVIDER` | 适配器选择：`openai` / `ollama` / `minimax` | `openai` |
 | `EMBEDDING_API_BASE` | Embedding 服务地址 | `http://localhost:11434/v1/embeddings` |
 | `EMBEDDING_MODEL_NAME` | Embedding 模型 | `qwen3-embedding:0.6b` |
-| `RERANK_MODEL_PATH` | 本地 Rerank 模型路径 | `models/Qwen3-Reranker-0.6B` |
+| `RERANK_MODEL_PATH` | 本地 Rerank 模型路径（相对于 models 目录） | `Qwen3-Reranker-0.6B` |
 | `RERANK_ENABLED` | 是否启用进程内 Rerank | `false` |
 | `FAISS_EMBEDDING_DIM` | 必须与 Embedding 模型维度一致 | `1024` |
 | `DOC_SCORE_THRESHOLD` | 返回参考文档所需的最低平均相关性 | `0.65` |

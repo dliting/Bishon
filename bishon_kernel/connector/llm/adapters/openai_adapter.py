@@ -33,14 +33,32 @@ class OpenAIAdapter(BaseAdapter):
         return params
 
     def _extract_content_nonstream(self, response) -> str:
-        """Extract content from a non-streaming response (overridable by subclasses)."""
+        """Extract content from a non-streaming response (overridable by subclasses).
+
+        For thinking models (e.g. Qwen3.5 with --reasoning-parser), the answer
+        may appear in the ``reasoning`` field when ``content`` is None or empty.
+        """
         if response.choices:
-            return response.choices[0].message.content or ''
+            msg = response.choices[0].message
+            content = msg.content or ''
+            if not content and getattr(msg, 'reasoning', None):
+                content = msg.reasoning
+            return content
         return ''
 
     def _process_stream_chunk(self, delta: dict) -> str | None:
-        """Process a single streaming delta; return content or None (overridable by subclasses)."""
-        return delta.get('content', '') or None
+        """Process a single streaming delta; return content or None (overridable by subclasses).
+
+        For thinking models (e.g. Qwen3.5 with --reasoning-parser), the answer
+        may appear in the ``reasoning`` field when ``content`` is empty.
+        """
+        content = delta.get('content', '') or ''
+        if content:
+            return content
+        reasoning = delta.get('reasoning', '') or ''
+        if reasoning:
+            return reasoning
+        return None
 
     # ---- streaming --------------------------------------------------
 

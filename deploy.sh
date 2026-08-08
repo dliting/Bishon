@@ -28,6 +28,8 @@ TAG=""
 MODELS_SOURCE=""
 MODELS_TAR=""
 MODELS_DIR=""
+PYENV_TAR=""
+NETWORK="bridge"
 SOURCE_DIR=""
 CONDA_ENV=""
 INSTALL_DEPS=false
@@ -53,6 +55,8 @@ while [[ $# -gt 0 ]]; do
         --models-source)   MODELS_SOURCE="$2"; shift 2 ;;
         --models)          MODELS_TAR="$2"; MODELS_SOURCE="tarball"; shift 2 ;;
         --models-dir)      MODELS_DIR="$2"; MODELS_SOURCE="directory"; shift 2 ;;
+        --pyenv)           PYENV_TAR="$2"; shift 2 ;;
+        --network)         NETWORK="$2"; shift 2 ;;
         --source-dir)      SOURCE_DIR="$2"; shift 2 ;;
         --conda-env)       CONDA_ENV="$2"; shift 2 ;;
         --install-deps)    INSTALL_DEPS=true; shift ;;
@@ -64,6 +68,12 @@ while [[ $# -gt 0 ]]; do
         *) echo "unknown arg: $1" >&2; exit 1 ;;
     esac
 done
+
+# Validate --network early (before it gets written to .network file).
+case "$NETWORK" in
+    bridge|host) ;;
+    *) echo "error: --network must be bridge or host, got: $NETWORK" >&2; exit 1 ;;
+esac
 
 export BISHON_LOG_TAG=deploy
 source "$SCRIPT_DIR/scripts/common/utils.sh"
@@ -132,6 +142,8 @@ TAG="$TAG"
 MODELS_SOURCE="$MODELS_SOURCE"
 MODELS_TAR="$MODELS_TAR"
 MODELS_DIR="$MODELS_DIR"
+PYENV_TAR="$PYENV_TAR"
+NETWORK="$NETWORK"
 SOURCE_DIR="$SOURCE_DIR"
 CONDA_ENV="$CONDA_ENV"
 INSTALL_DEPS="$INSTALL_DEPS"
@@ -173,9 +185,12 @@ case "$MODE" in
         elif [ "$MODELS_SOURCE" = "directory" ]; then
             INSTALL_ARGS+=(--models-dir "$MODELS_DIR")
         fi
+        [ -n "$PYENV_TAR" ] && INSTALL_ARGS+=(--pyenv "$PYENV_TAR")
         bash "$SCRIPT_DIR/scripts/docker/install.sh" "${INSTALL_ARGS[@]}"
+        # Persist network mode so start.sh reads it on subsequent restarts.
+        echo "$NETWORK" > "$HOST_DIR/.network"
         if $START_AFTER; then
-            bash "$SCRIPT_DIR/scripts/docker/start.sh" --host-dir "$HOST_DIR"
+            bash "$SCRIPT_DIR/scripts/docker/start.sh" --host-dir "$HOST_DIR" --network "$NETWORK"
         fi
         ;;
     bare-metal)

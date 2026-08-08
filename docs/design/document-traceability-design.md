@@ -2,14 +2,14 @@
 
 ## Context
 
-用户在知识库问答时，AI 返回的答案附带来源文档片段（source_documents），但目前只能展开查看匹配的文本片段，无法打开原始文档查看完整内容。本功能让用户点击来源文档的文件名，即可在浏览器新标签页中打开原始文件。
+用户在知识库问答时，AI 返回的答案附带来源文档片段（source_documents），但目前只能展开查看匹配的文本片段，无法打开原始文档查看完整内容。本功能让用户点击来源文档的文件名，即可下载原始文件。
 
 ## 需求
 
 - 在 Chat 页面的来源文档区域，点击文件名可打开原始文档
 - 文件类型文档（pdf、docx、txt、图片等）通过服务器 API 获取
 - URL 类型来源直接在新标签页打开原始链接
-- 浏览器支持的格式（PDF、图片、文本）自动预览，其他格式触发下载
+- 浏览器触发文件下载（Content-Disposition: attachment），用户可在本地打开查看
 
 ## 数据流分析
 
@@ -34,7 +34,7 @@ GET /api/local_doc_qa/download_file/{file_id}
 1. 通过 `file_id` 查询 File 表 JOIN KnowledgeBase 表，获取 `user_id`、`file_name`、`deleted` 状态
 2. 校验文件存在且未删除
 3. **URL 类型**（file_name 以 http 开头）：返回 302 重定向到原始 URL
-4. **文件类型**：拼接磁盘路径 `UPLOAD_ROOT_PATH / user_id / file_id / file_name`，用 `FileResponse` 返回。不传 `filename` 参数，让浏览器根据 Content-Type 自动决定预览或下载
+4. **文件类型**：拼接磁盘路径 `UPLOAD_ROOT_PATH / user_id / file_id / file_name`，用 `FileResponse(path, filename=file_name)` 返回。传入 `filename` 参数使 Starlette 自动设置 `Content-Disposition: attachment` 头，浏览器将触发下载而非内联预览
 
 #### 新增 SQLite 查询方法
 
@@ -67,6 +67,7 @@ file_path = os.path.join(UPLOAD_ROOT_PATH, user_id, file_id, file_name)
 |------|------------|------|
 | file_id 不存在 | 404 | `{"code": 2004, "msg": "file not found"}` |
 | 文件已删除 | 404 | `{"code": 2004, "msg": "file deleted"}` |
+| file_name 为空或 None | 404 | `{"code": 2004, "msg": "invalid file name"}` |
 | 磁盘文件丢失 | 404 | `{"code": 2004, "msg": "file not found on disk"}` |
 | URL 类型文件 | 302 | 重定向到原始 URL |
 
@@ -93,12 +94,13 @@ file_path = os.path.join(UPLOAD_ROOT_PATH, user_id, file_id, file_name)
 
 ```typescript
 // apiBase 已在 Chat.vue 中 import，值为 VITE_APP_API_HOST + VITE_APP_API_PREFIX
+// aDownLoad 使用 <a download> 触发下载，不会打开空白标签页
 const openSourceFile = (sourceItem: IDataSourceItem) => {
   if (!sourceItem.file_name) return;
   if (sourceItem.file_name.startsWith('http')) {
     window.open(sourceItem.file_name, '_blank');
   } else if (sourceItem.file_id) {
-    window.open(`${apiBase}/local_doc_qa/download_file/${sourceItem.file_id}`, '_blank');
+    aDownLoad(`${apiBase}/local_doc_qa/download_file/${sourceItem.file_id}`, sourceItem.file_name);
   }
 };
 ```
@@ -125,7 +127,7 @@ const openSourceFile = (sourceItem: IDataSourceItem) => {
 
 ### 前端测试
 
-- **Playwright E2E**: 问答后在来源文档区域点击文件名，验证新标签页打开
+- **Playwright E2E**: 问答后在来源文档区域点击文件名，验证触发文件下载
 
 ### 边界情况
 

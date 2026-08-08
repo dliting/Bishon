@@ -195,7 +195,7 @@ EOF
 }
 
 @test "launcher.sh references bind-mounted entrypoint" {
-    grep -q "/opt/bishon-data/bishon/docker/entrypoint.sh" "$REPO_ROOT/docker/launcher.sh"
+    grep -q "/opt/bishon-home/bishon/docker/entrypoint.sh" "$REPO_ROOT/docker/launcher.sh"
 }
 
 @test "entrypoint.sh sources all 4 lib modules" {
@@ -210,6 +210,22 @@ EOF
     grep -q -- "--skip-node)" "$REPO_ROOT/scripts/docker/make-release.sh"
 }
 
+@test "make-release.sh accepts --skip-pyenv flag" {
+    grep -q -- "--skip-pyenv)" "$REPO_ROOT/scripts/docker/make-release.sh"
+}
+
+@test "make-release.sh produces bishon-pyenv tarball" {
+    grep -qE "PYENV_TGZ=|bishon-pyenv" "$REPO_ROOT/scripts/docker/make-release.sh"
+}
+
+@test "make-release.sh main tarball excludes python-env" {
+    grep -qE "exclude.*python-env" "$REPO_ROOT/scripts/docker/make-release.sh"
+}
+
+@test "make-release.sh main tarball excludes models dir" {
+    grep -qE "exclude.*models" "$REPO_ROOT/scripts/docker/make-release.sh"
+}
+
 @test "make-release.sh has step 3c (node-env staging)" {
     grep -qE "3c\. Node|NODE_TGZ=|node-env.*bishon-node" "$REPO_ROOT/scripts/docker/make-release.sh"
 }
@@ -218,8 +234,20 @@ EOF
     grep -q -- "--node)" "$REPO_ROOT/scripts/docker/install.sh"
 }
 
+@test "install.sh accepts --pyenv flag" {
+    grep -q -- "--pyenv)" "$REPO_ROOT/scripts/docker/install.sh"
+}
+
+@test "install.sh requires --pyenv for first-time install" {
+    grep -qE "pyenv.*required|--pyenv.*required" "$REPO_ROOT/scripts/docker/install.sh"
+}
+
 @test "upgrade.sh accepts --node flag" {
     grep -q -- "--node)" "$REPO_ROOT/scripts/docker/upgrade.sh"
+}
+
+@test "upgrade.sh accepts --pyenv flag" {
+    grep -q -- "--pyenv)" "$REPO_ROOT/scripts/docker/upgrade.sh"
 }
 
 @test "frontend_needs_rebuild returns 0 (true) when dist missing" {
@@ -311,5 +339,25 @@ EOF
     [ -f "$REPO_ROOT/docs/wsl-docker-gpu-pitfall.md" ]
     grep -q "libnvdxgdmal" "$REPO_ROOT/docs/wsl-docker-gpu-pitfall.md"
     grep -q "Error 500" "$REPO_ROOT/docs/wsl-docker-gpu-pitfall.md"
+}
+
+# ---------------------------------------------------------------------------
+# 9. start.sh --network flag (bridge / host)
+# ---------------------------------------------------------------------------
+
+@test "start.sh accepts --network flag" {
+    grep -q -- "--network)" "$REPO_ROOT/scripts/docker/start.sh"
+}
+
+@test "start.sh defaults to bridge network" {
+    grep -qE 'NETWORK=.*bridge|echo bridge' "$REPO_ROOT/scripts/docker/start.sh"
+}
+
+@test "start.sh uses -p in bridge mode" {
+    grep -qE 'bridge.*NET_FLAGS=.*-p 8777:8777' "$REPO_ROOT/scripts/docker/start.sh"
+}
+
+@test "start.sh uses --network host in host mode" {
+    grep -qE 'host.*NET_FLAGS=.*--network host' "$REPO_ROOT/scripts/docker/start.sh"
 }
 

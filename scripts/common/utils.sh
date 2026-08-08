@@ -84,7 +84,7 @@ bishon_validate_host_dir_fs() {
        WSL mounts Windows drives under /mnt/* (9p/drvfs); Linux auto-mounts
        under /media/* or /run/media/* (often cifs/9p). SQLite WAL will fail
        with I/O errors on these filesystems.
-       Use an ext4 path inside WSL, e.g. ~/bishon-data or /var/lib/bishon." \
+       Use an ext4 path inside WSL, e.g. ~/bishon-home or /var/lib/bishon." \
                 || return 1
             return 1 ;;
     esac

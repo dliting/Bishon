@@ -10,27 +10,36 @@
 set -euo pipefail
 
 HOST_DIR=""
+NETWORK=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host-dir) HOST_DIR="$2"; shift 2 ;;
+        --network)  NETWORK="$2"; shift 2 ;;
         -h|--help)
             cat <<EOF
 start.sh — Start the Bishon V2 container.
 
 Reads .image-tag and .accelerator from <host-dir>, runs the container with
--v <host-dir>:/opt/bishon-data + --env-file <host-dir>/.env + GPU flags,
+-v <host-dir>:/opt/bishon-home + --env-file <host-dir>/.env + GPU flags,
 then polls /api/health up to 180s (cold-start budget for model loading).
 
 USAGE
-  bash $0 --host-dir <dir>
+  bash $0 --host-dir <dir> [--network bridge|host]
 
 FLAGS
   --host-dir <dir>   Directory created by install.sh. Must contain
                      .image-tag, .accelerator (optional, defaults to cuda),
                      and .env.
+  --network <mode>   Docker network mode (default: bridge).
+                     - bridge: port mapping via -p 8777:8777 (isolated).
+                     - host:   share host network stack; no port mapping.
+                       Useful when LLM/Embedding services run on the host
+                       (e.g. Ollama on Windows via WSL2) and the container
+                       needs to reach them via localhost.
 
 EXAMPLES
   bash $0 --host-dir /var/lib/bishon
+  bash $0 --host-dir /var/lib/bishon --network host
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -51,6 +60,8 @@ HOST_DIR="$(readlink -f "$HOST_DIR")"
 
 IMAGE="$(cat "$HOST_DIR/.image-tag")"
 ACC="$(cat "$HOST_DIR/.accelerator" 2>/dev/null || echo cuda)"
+# Network mode: CLI --network overrides .network file, default is bridge.
+NETWORK="${NETWORK:-$(cat "$HOST_DIR/.network" 2>/dev/null | tr -d '[:space:]' || echo bridge)}"
 
 command -v docker >/dev/null || die "docker not found on PATH"
 command -v curl >/dev/null   || die "curl not found on PATH"
@@ -93,38 +104,34 @@ EOF
 esac
 
 # --- 3. Run ------------------------------------------------------------------
-# In WSL, Docker Desktop's host.docker.internal resolves to the Docker bridge
-# (172.16.x.x), not the Windows host. Override it to the WSL gateway so
-# containers can reach services like Ollama running on Windows.
-# In native Linux, this is skipped — Docker Desktop or the operator handles it.
-ADD_HOST_FLAG=()
+# WSL2 only: bind-mount the WSL GPU driver dir. nvidia-container-runtime
+# cherry-picks which libs to mount and historically missed libnvdxgdmal.so.1
+# (the DXG DMA helper). Without it, libcuda.so.1's proxy returns
+# "Error 500: named symbol not found" on the first cuInit() call — even
+# though nvidia-smi works. See docs/wsl-docker-gpu-pitfall.md.
 WSL_DRIVER_FLAG=()
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    HOST_GATEWAY="$(ip route | grep default | awk '{print $3}' 2>/dev/null || true)"
-    if [ -n "$HOST_GATEWAY" ]; then
-        ADD_HOST_FLAG=(--add-host "host.docker.internal:$HOST_GATEWAY")
-        log "host.docker.internal → $HOST_GATEWAY (WSL gateway)"
-    fi
-
-    # WSL2 only: bind-mount the WSL GPU driver dir. nvidia-container-runtime
-    # cherry-picks which libs to mount and historically missed libnvdxgdmal.so.1
-    # (the DXG DMA helper). Without it, libcuda.so.1's proxy returns
-    # "Error 500: named symbol not found" on the first cuInit() call — even
-    # though nvidia-smi works. See docs/wsl-docker-gpu-pitfall.md.
-    if [ -d /usr/lib/wsl/drivers ]; then
-        WSL_DRIVER_FLAG=(-v /usr/lib/wsl:/usr/lib/wsl:ro)
-        log "WSL2 GPU driver mount: /usr/lib/wsl → /usr/lib/wsl (ro)"
-    fi
+if grep -qi microsoft /proc/version 2>/dev/null && [ -d /usr/lib/wsl/drivers ]; then
+    WSL_DRIVER_FLAG=(-v /usr/lib/wsl:/usr/lib/wsl:ro)
+    log "WSL2 GPU driver mount: /usr/lib/wsl → /usr/lib/wsl (ro)"
 fi
 
-log "starting container 'bishon' (image=$IMAGE, acc=$ACC)"
+log "starting container 'bishon' (image=$IMAGE, acc=$ACC, network=$NETWORK)"
+
+# --network host: no port mapping, container shares host network stack.
+# --network bridge (default): map port 8777.
+NET_FLAGS=()
+case "$NETWORK" in
+    bridge) NET_FLAGS=(-p 8777:8777) ;;
+    host)   NET_FLAGS=(--network host) ;;
+    *)      die "unknown network mode '$NETWORK' (use bridge or host)" ;;
+esac
+
 docker run -d \
     --name bishon \
     "${GPU_FLAGS[@]}" \
-    -p 8777:8777 \
+    "${NET_FLAGS[@]}" \
     --env-file "$HOST_DIR/.env" \
-    -v "$HOST_DIR:/opt/bishon-data" \
-    "${ADD_HOST_FLAG[@]}" \
+    -v "$HOST_DIR:/opt/bishon-home" \
     "${WSL_DRIVER_FLAG[@]}" \
     --restart unless-stopped \
     "$IMAGE" \

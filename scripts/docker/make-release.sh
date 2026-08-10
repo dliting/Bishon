@@ -498,9 +498,11 @@ log "  bash deploy.sh"
 # --- 9. Cleanup staging directories ------------------------------------------
 # The release directory should only contain deployable artifacts (tarballs,
 # checksums, README, deploy scripts). Intermediate staging dirs (bishon/,
-# models/, node-env/, scripts/) are already packed into their respective
-# tarballs and must be removed to keep the directory clean for distribution.
+# models/, node-env/) are already packed into their respective tarballs and
+# must be removed to keep the directory clean for distribution.
+# NOTE: scripts/ is NOT removed — deploy.sh sources scripts/common/utils.sh
+# at runtime, so it must remain in the release directory.
 log "cleaning up staging directories"
-rm -rf "$DIST/bishon" "$DIST/models" "$DIST/node-env" "$DIST/scripts"
+rm -rf "$DIST/bishon" "$DIST/models" "$DIST/node-env"
 rm -rf "$DIST"/.tmp.*
 log "release directory ready for distribution: $DIST"

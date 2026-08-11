@@ -250,6 +250,15 @@ fi
 
 mkdir -p "$HOST_DIR/scripts"
 cp -a "$TMP/scripts/." "$HOST_DIR/scripts/"
+
+# Root-level operator entry points (Docker mode only)
+for f in start-docker.sh stop-docker.sh; do
+    if [ -f "$TMP/$f" ]; then
+        cp "$TMP/$f" "$HOST_DIR/"
+        chmod +x "$HOST_DIR/$f"
+    fi
+done
+
 cp "$TMP/.env.example" "$HOST_DIR/"
 
 # --- 5. .env (避坑指南 #4 陷阱 1: never overwrite) ---------------------------
@@ -275,7 +284,7 @@ Next steps:
      - Docker bridge mode: use Docker bridge IP (e.g. http://172.17.0.1:8000/v1)
      - Docker host mode (--network host): localhost works
   2. Start the service:
-       bash $HOST_DIR/scripts/docker/start.sh --host-dir $HOST_DIR
+       bash $HOST_DIR/start-docker.sh --host-dir $HOST_DIR
      Add --network host if LLM/Embedding services run on the same host.
 EOF
 if [ -z "$NODE_TAR" ] && [ ! -d "$HOST_DIR/node-env" ]; then

@@ -363,6 +363,10 @@ cat > "$DIST/README.md" <<EOREADME
 | \`bishon-node-$VERSION.tar.gz\` | ~160M | Node.js + 前端依赖 (可选, 用于前端热重建) |
 | \`*.sha256\` | — | 各文件 SHA256 校验 |
 | \`deploy.sh\` | — | 部署入口脚本 (交互式向导) |
+| \`start-docker.sh\` | — | 启动 Docker 容器 |
+| \`stop-docker.sh\` | — | 停止 Docker 容器 |
+| \`start-bare-metal.sh\` | — | 启动 bare-metal 服务 (仅 bare-metal 模式) |
+| \`stop-bare-metal.sh\` | — | 停止 bare-metal 服务 (仅 bare-metal 模式) |
 | \`VERSION\` | — | 版本号 |
 
 ## 环境要求
@@ -417,6 +421,8 @@ EMBEDDING_MODEL_NAME=Qwen3-Embedding-0.6B
 
 ## 常用操作
 
+### Docker 模式
+
 \`\`\`bash
 # 启动
 bash start-docker.sh --host-dir /opt/bishon-home
@@ -426,6 +432,19 @@ bash stop-docker.sh --host-dir /opt/bishon-home
 
 # 查看日志
 docker logs -f bishon
+
+# 健康检查
+curl http://localhost:8777/api/health
+\`\`\`
+
+### Bare-metal 模式
+
+\`\`\`bash
+# 启动
+bash start-bare-metal.sh
+
+# 停止
+bash stop-bare-metal.sh
 
 # 健康检查
 curl http://localhost:8777/api/health

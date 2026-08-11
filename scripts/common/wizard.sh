@@ -179,8 +179,8 @@ else
     DEFAULT_MODE="$MODE"
 fi
 
-# Default host-dir: ./bishon-home (next to wherever the operator is running).
-[ -z "$HOST_DIR" ] && HOST_DIR="./bishon-home"
+# Default host-dir: /opt/bishon-home (standard deployment location).
+[ -z "$HOST_DIR" ] && HOST_DIR="/opt/bishon-home"
 
 
 # ===== Step 1-4: Gather inputs =====

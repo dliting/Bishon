@@ -75,6 +75,12 @@ Other:
                        Enables frontend hot-rebuild at container start.
   --pyenv <tar.gz>     (Required) Python conda env tarball from make-release.sh.
   --accelerator <acc>  cuda (default) | ascend (future).
+
+Environment:
+  BISHON_SUDO_PASS     If set, used with sudo -S to remove root-owned files
+                       left by Docker container (e.g. __pycache__). If unset
+                       and sudo requires a password, install.sh will fail with
+                       instructions to run sudo chown manually.
 EOF
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -193,14 +199,60 @@ if ! grep -qP 'src="/bishon/assets/|href="/bishon/assets/' "$TMP/bishon/bishon_k
     die "release tarball frontend dist has wrong base path (assets do not start with /bishon/assets/). Rebuild with VITE_APP_WEB_PREFIX=/bishon."
 fi
 
-rm -rf "$HOST_DIR/bishon"
+# Docker container runs as root, creating root-owned __pycache__ and log files
+# under bishon/ and python-env/. A plain rm -rf fails with "permission denied"
+# when re-installing as a non-root user. Strategy:
+#   1. Try chmod + rm -rf (works if user owns all files; no-op for root-owned).
+#   2. Try sudo -n rm -rf (works if user has passwordless sudo).
+#   3. Try sudo -S with BISHON_SUDO_PASS env var (for password-protected sudo).
+#      NOTE: BISHON_SUDO_PASS is visible to same-user processes via /proc/environ.
+#      Acceptable for internal deployments; avoid on shared multi-user systems.
+#   4. Die with instructions to chown manually.
+_rm_rf() {
+    local dir="$1"
+    if [ ! -d "$dir" ]; then return 0; fi
+    # chmod -R u+w is a no-op for root-owned files (non-owner cannot chmod),
+    # but helps when some files are owned by the current user and others by root.
+    chmod -R u+w "$dir" 2>/dev/null || true
+    if rm -rf "$dir" 2>/dev/null; then
+        return 0
+    fi
+    # Files owned by root (or another user). Try sudo.
+    if command -v sudo >/dev/null; then
+        # Non-interactive sudo (passwordless / NOPASSWD).
+        if sudo -n rm -rf "$dir" 2>/dev/null; then
+            log "used sudo to remove root-owned files in $dir"
+            return 0
+        fi
+        # Password-protected sudo via env var (set BISHON_SUDO_PASS before running).
+        if [ -n "${BISHON_SUDO_PASS:-}" ]; then
+            if echo "$BISHON_SUDO_PASS" | sudo -S rm -rf "$dir" 2>/dev/null; then
+                log "used sudo (BISHON_SUDO_PASS) to remove root-owned files in $dir"
+                return 0
+            fi
+        fi
+    fi
+    # Show which files are blocking removal so the user can fix them.
+    log "blocked by root-owned files in $dir:"
+    find "$dir" ! -user "$(id -un)" -print 2>/dev/null | head -20 | while read -r f; do log "  $f"; done
+    die "cannot remove $dir (permission denied). Run: sudo chown -R \$(id -un):\$(id -gn) $dir && re-run install.sh"
+}
+_rm_rf "$HOST_DIR/bishon"
 mv "$TMP/bishon"     "$HOST_DIR/bishon"
 
 # --- 4b. python-env: separate tarball (required) ----------------------------
+# Remove existing python-env first — tar overlay fails on root-owned __pycache__
+# left by Docker container (permission denied on write).
+_rm_rf "$HOST_DIR/python-env"
 log "extracting python-env from $PYENV_TAR"
 tar -xzf "$PYENV_TAR" -C "$HOST_DIR"
 [ -d "$HOST_DIR/python-env/bin" ] || \
     die "pyenv tarball did not produce python-env/bin directory"
+
+# Mark deps as installed — python-env from pyenv tarball is already complete.
+# Without this, start-bare-metal.sh would attempt pip install (downloading
+# from PyPI), which fails in offline deployments and is unnecessary anyway.
+touch "$HOST_DIR/bishon/.deps_installed"
 
 # CRLF guard: if the release tarball was made on Windows or git checked out
 # with CRLF, bishon/docker/*.sh would fail in the container with
@@ -218,7 +270,7 @@ fi
 # (backward compat with older releases that shipped models inline). If neither
 # is present, install without models — the service runs fine w/o them (Rerank
 # can be disabled; OCR will warn at startup).
-rm -rf "$HOST_DIR/models"
+_rm_rf "$HOST_DIR/models"
 if [ -n "$MODELS_TAR" ]; then
     log "extracting models from $MODELS_TAR"
     tar -xzf "$MODELS_TAR" -C "$HOST_DIR"
@@ -237,7 +289,7 @@ fi
 # install.sh --node <tar> extracts bishon-node-<ver>.tar.gz to $HOST_DIR/node-env/.
 # entrypoint.sh then binds it via symlink + PATH. If absent, the container starts
 # normally but skips frontend hot-rebuild (dist must be pre-built by make-release).
-rm -rf "$HOST_DIR/node-env"
+_rm_rf "$HOST_DIR/node-env"
 if [ -n "$NODE_TAR" ]; then
     log "extracting node-env from $NODE_TAR"
     tar -xzf "$NODE_TAR" -C "$HOST_DIR"

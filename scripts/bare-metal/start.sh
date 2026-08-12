@@ -47,14 +47,60 @@ conda activate bishon || {
     exit 1
 }
 
-# Ensure log directories exist.
+# Detect deployment vs development layout.
+# In deployment: SOURCE_DIR = <host-dir>/bishon (basename is "bishon").
+# In development: SOURCE_DIR = repo root (basename is "dev" or "V2", etc.).
+HOST_DIR=""
+if [ "$(basename "$SOURCE_DIR")" = "bishon" ]; then
+    HOST_DIR="$(dirname "$SOURCE_DIR")"
+fi
+
+# Source .env from host-dir root (mirrors Docker --env-file mechanism).
+# In Docker mode, .env is at <host-dir>/.env and injected via --env-file.
+# In bare-metal mode, load_dotenv looks in bishon/ but .env is one level up.
+# Since load_dotenv(override=False) won't overwrite existing env vars,
+# exporting here first ensures all config is available.
+if [ -n "$HOST_DIR" ] && [ -f "$HOST_DIR/.env" ]; then
+    set -a
+    source "$HOST_DIR/.env"
+    set +a
+fi
+
+# Redirect BISHON_DB/ and logs/ to host-dir top level (same as Docker entrypoint).
+# In deployment layout, these live at <host-dir>/BISHON_DB and <host-dir>/logs,
+# not inside bishon/ (which gets overwritten on upgrade). Create symlinks if
+# they don't exist yet. Skip in development mode (no host-dir).
+if [ -n "$HOST_DIR" ]; then
+    for _dir in BISHON_DB logs; do
+        _target="$HOST_DIR/$_dir"
+        _link="$SOURCE_DIR/$_dir"
+        mkdir -p "$_target"
+        if [ -L "$_link" ]; then
+            :  # already a symlink, good
+        elif [ ! -e "$_link" ]; then
+            ln -s "$_target" "$_link"
+        elif rmdir "$_link" 2>/dev/null; then
+            ln -s "$_target" "$_link"
+        else
+            echo "[WARN] $_link exists and is non-empty. Not redirecting — data may be lost on upgrade." >&2
+        fi
+    done
+fi
+
+# Ensure log directories exist (after symlink setup so mkdir follows symlinks).
 mkdir -p logs/debug_logs logs/qa_logs BISHON_DB/faiss BISHON_DB/content
 
 # Pre-set models directory and tiktoken cache for offline deployment.
-# These are also set by Docker entrypoint.sh; bare-metal mode sets them
-# explicitly for symmetry and robustness (not relying on model_config.py fallback).
-export MODELS_DIR="$SOURCE_DIR/models"
-export TIKTOKEN_CACHE_DIR="$SOURCE_DIR/models/tiktoken_cache"
+# In Docker mode, entrypoint.sh symlinks bishon/models → host-dir/models.
+# In bare-metal mode, models may be at <host-dir>/models (deployment layout)
+# or <source-dir>/models (dev layout). Prefer host-dir if it exists.
+if [ -n "$HOST_DIR" ] && [ -d "$HOST_DIR/models" ]; then
+    export MODELS_DIR="$HOST_DIR/models"
+    export TIKTOKEN_CACHE_DIR="$HOST_DIR/models/tiktoken_cache"
+else
+    export MODELS_DIR="$SOURCE_DIR/models"
+    export TIKTOKEN_CACHE_DIR="$SOURCE_DIR/models/tiktoken_cache"
+fi
 
 # Install dependencies (first run only).
 if [ ! -f ".deps_installed" ]; then

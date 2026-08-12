@@ -16,10 +16,13 @@ def preload_cublaslt():
     """
     try:
         import nvidia.cublas.lib as cublas_dir
-        cublaslt_path = os.path.join(os.path.dirname(cublas_dir.__file__), "libcublasLt.so.12")
+        # nvidia-cublas-cu12 >= 12.9 uses PEP 420 namespace packages where
+        # __file__ is None.  __path__ works for both regular and namespace
+        # packages, so use it uniformly.
+        cublaslt_path = os.path.join(list(cublas_dir.__path__)[0], "libcublasLt.so.12")
         if os.path.exists(cublaslt_path):
             ctypes.CDLL(cublaslt_path, mode=ctypes.RTLD_GLOBAL)
-    except (ImportError, OSError) as e:
+    except (ImportError, OSError, IndexError) as e:
         logger.warning("libcublasLt preload skipped: %s", e)
 
 

@@ -286,12 +286,23 @@ bash install.sh \
 2. 创建目录骨架（`python-env/` `bishon/` `models/` `BISHON_DB/{faiss,content}` `logs/{debug_logs,qa_logs}`）；
 3. `docker load` 镜像 tar；
 4. 解压发布包（源码 + 脚本），原子 mv 到 `<host-dir>/`；
+   - 删除旧 `bishon/` 时，Docker 容器创建的 root 拥有 `__pycache__` 会导致 `rm -rf` 失败。`_rm_rf()` 函数依次尝试 chmod → sudo -n → `BISHON_SUDO_PASS` 环境变量 → 报错退出；
 4b. 解压 python-env 独立 tarball（`--pyenv`，首次安装必需）；
-4c. 拷贝 Docker 模式启停脚本到 `<host-dir>/` 根目录（`start-docker.sh`、`stop-docker.sh`）；
+4c. 创建 `.deps_installed` 标记文件，防止 bare-metal 模式下 `start.sh` 尝试 `pip install`（离线部署会失败）；
+4d. 拷贝 Docker 模式启停脚本到 `<host-dir>/` 根目录（`start-docker.sh`、`stop-docker.sh`）；
 5. 仅当 `.env` 不存在时拷贝 `.env.example` 为 `.env`（**永不被覆盖**）；
 6. 写 `.image-tag` 与 `.accelerator`。
 
 **安装后必做**：编辑 `<host-dir>/.env`，把 `OPENAI_API_BASE` 和 `EMBEDDING_API_BASE` 改为部署机上真实可达的 URL（[避坑指南 #1](#避坑指南对照表)：**不要用 `host.docker.internal`**，详见下方避坑表）。
+
+**root 拥有文件处理**：Docker 容器以 root 运行，会在 `bishon/` 和 `python-env/` 下创建 root 拥有的 `__pycache__`。重新安装时 `install.sh` 的 `_rm_rf()` 会尝试删除，如果当前用户无 sudo 权限，需先手动执行：
+```bash
+sudo chown -R $(id -un):$(id -gn) /opt/bishon-home/bishon /opt/bishon-home/python-env
+```
+如果 sudo 需要密码且无法交互输入，可设置环境变量：
+```bash
+BISHON_SUDO_PASS=<password> bash install.sh ...
+```
 
 ## 部署机：启动与健康检查
 

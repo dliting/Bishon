@@ -68,14 +68,18 @@ bash /opt/bishon-home/stop-docker.sh  --host-dir /opt/bishon-home
 ### Bare-metal mode
 
 ```bash
+# From the host directory (deployment layout)
+bash /opt/bishon-home/scripts/bare-metal/start.sh --source-dir /opt/bishon-home/bishon --daemon
+bash /opt/bishon-home/scripts/bare-metal/stop.sh
+
+# Or from the repo root (development layout)
 bash start-bare-metal.sh
 bash stop-bare-metal.sh
 ```
 
 ## Configure
 
-Edit `/opt/bishon-home/.env` (Docker mode) or `.env` in the source directory
-(bare-metal mode) to set:
+Edit `/opt/bishon-home/.env` to set (both Docker and bare-metal modes):
 
 ```bash
 OPENAI_API_BASE=http://your-llm-host:8000/v1

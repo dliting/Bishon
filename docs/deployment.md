@@ -97,12 +97,12 @@ ls dist/
 | 操作 | Docker 离线 | Docker 在线 | Bare-metal |
 |---|---|---|---|
 | **部署** | `deploy.sh` → docker-offline | `deploy.sh` → docker-online | `deploy.sh` → bare-metal |
-| **启动** | `bash <dir>/start-docker.sh --host-dir <dir>` | 同左 | `bash start-bare-metal.sh` |
-| **停止** | `bash <dir>/stop-docker.sh --host-dir <dir>` | 同左 | `bash stop-bare-metal.sh` |
-| **升级** | `bash <dir>/scripts/docker/upgrade.sh --host-dir <dir> --release <tar>` | 同左 | `git pull && pip install -r requirements.txt` |
+| **启动** | `bash <dir>/start-docker.sh --host-dir <dir>` | 同左 | `bash <dir>/scripts/bare-metal/start.sh --source-dir <dir>/bishon --daemon` |
+| **停止** | `bash <dir>/stop-docker.sh --host-dir <dir>` | 同左 | `bash <dir>/scripts/bare-metal/stop.sh` |
+| **升级** | `bash <dir>/scripts/docker/upgrade.sh --host-dir <dir> --release <tar>` | 同左 | `bash <dir>/scripts/docker/upgrade.sh --host-dir <dir> --release <tar>` |
 | **升级 Node** | `bash <dir>/scripts/docker/upgrade.sh --host-dir <dir> --node <tar>` | 同左 | n/a |
 | **卸载** | `bash <dir>/scripts/docker/uninstall.sh --host-dir <dir>` | 同左 | `rm -rf <dir>` |
-| **日志** | `tail -f <dir>/logs/debug_logs/debug.log` | 同左 | `tail -f logs/debug_logs/debug.log` |
+| **日志** | `tail -f <dir>/logs/debug_logs/debug.log` | 同左 | `tail -f <dir>/logs/debug_logs/debug.log` |
 
 ## 目录
 
@@ -322,6 +322,47 @@ bash /opt/bishon-home/start-docker.sh --host-dir /opt/bishon-home
 
 服务地址：<http://localhost:8777/bishon/>
 
+### Bare-metal 模式启动
+
+Bare-metal 模式不使用 Docker，直接在宿主机 conda 环境中运行 uvicorn。前提：`install.sh` 已完成安装，且 conda 环境已注册（见下方"注册 conda 环境"）。
+
+```bash
+# 前台运行（调试用，Ctrl+C 停止）
+bash /opt/bishon-home/scripts/bare-metal/start.sh --source-dir /opt/bishon-home/bishon
+
+# 后台运行（生产用）
+bash /opt/bishon-home/scripts/bare-metal/start.sh --source-dir /opt/bishon-home/bishon --daemon
+
+# 停止
+bash /opt/bishon-home/scripts/bare-metal/stop.sh
+```
+
+`start.sh` 在 bare-metal 模式下自动完成以下与 Docker entrypoint 等价的操作：
+
+1. **HOST_DIR 检测**：当 `SOURCE_DIR` 的 basename 为 `bishon` 时，自动推导 `HOST_DIR` 为其父目录（部署布局）；否则为开发模式。
+2. **`.env` 加载**：从 `$HOST_DIR/.env` source 环境变量（等价于 Docker 的 `--env-file`），确保 `OPENAI_API_BASE` 等配置可用。
+3. **BISHON_DB / logs 重定向**：创建 `bishon/BISHON_DB` → `$HOST_DIR/BISHON_DB` 和 `bishon/logs` → `$HOST_DIR/logs` 符号链接，与 Docker entrypoint 行为一致——数据持久化在 host-dir 顶层，不受 upgrade 覆盖。
+4. **models 路径**：优先使用 `$HOST_DIR/models`（部署布局），否则 fallback 到 `$SOURCE_DIR/models`（开发布局）。
+
+#### 注册 conda 环境
+
+`install.sh` 将 python-env 解压到 `$HOST_DIR/python-env/`，但 conda 不知道这个 env 的存在。需要手动注册：
+
+```bash
+# 方法 1：符号链接（推荐，不复制文件）
+sudo ln -sf /opt/bishon-home/python-env /opt/miniconda3/envs/bishon
+
+# 方法 2：如果 conda 安装在其他位置
+sudo ln -sf /opt/bishon-home/python-env ~/miniconda3/envs/bishon
+```
+
+注册后验证：
+
+```bash
+conda activate bishon
+python -c "import torch; print(torch.cuda.is_available())"
+```
+
 ## 部署机：升级（publish）
 
 代码或模型变更时，开发机重跑 `make-release.sh`（同版本号或递增均可，递增更清晰），把新 `bishon-release-<v>.tar.gz` 复制到部署机后：
@@ -433,6 +474,9 @@ rm -rf /opt/bishon-home
 | 4 陷阱 1 | 发布流程把开发机的本地 `.env` 打入发布包，部署时覆盖目标环境已定制配置 | 发布包**不含 `.env`**（`make-release.sh` rsync 排除）。`install.sh` 仅当 `.env` 不存在时从 `.env.example` 创建；`upgrade.sh` **永远不动 `.env`**。 | `make-release.sh` rsync、`install.sh` step 5、`upgrade.sh` |
 | 4 陷阱 2 | 发布包遗漏静态资源目录，启动时路由检测失败，访问返回 404 | ① `make-release.sh` 前置校验 `bishon_kernel/bishon_server/dist/bishon/index.html` 存在；② 安装时再校验；③ `start.sh` 启动后 `curl /bishon/` 验证 200。 | `make-release.sh` step 0c、`install.sh` step 4、`start.sh` step 5 |
 | 5 | 部署后不校验，容器启动成功 ≠ 服务可用 | `start.sh` 内置：① `curl /api/health` 等待 180 秒（覆盖冷启动）；② `curl /bishon/` 校验静态资源；③ 失败时 `docker logs bishon | tail -50` 自动打印。 | `start.sh` step 4–5 |
+| 6 | `nvidia-cublas-cu12 >= 12.9` 使用 PEP 420 namespace package，`__file__` 为 `None`，`os.path.dirname(None)` 抛 `TypeError` 导致应用无法启动 | `gpu_utils.py:preload_cublaslt()` 统一使用 `__path__[0]`（regular 和 namespace 包均可用），`except` 增加 `IndexError`。 | `bishon_kernel/utils/gpu_utils.py` |
+| 7 | Docker 容器以 root 运行，创建 root 拥有的 `__pycache__`，重新安装时 `rm -rf` 权限不够 | `install.sh` 的 `_rm_rf()` 依次尝试 chmod → sudo -n → `BISHON_SUDO_PASS` 环境变量 → 报错退出并显示阻塞文件列表。 | `scripts/docker/install.sh` |
+| 8 | Bare-metal 模式下 `.env` 在 host-dir 根目录，`load_dotenv` 找不到 | `start.sh` 在启动 uvicorn 前 `source $HOST_DIR/.env`（等价 Docker `--env-file`），`load_dotenv(override=False)` 不覆盖已注入变量。 | `scripts/bare-metal/start.sh` |
 
 ## 常见排障
 
@@ -478,6 +522,49 @@ sha256sum /opt/bishon-home/bishon/bishon_kernel/bishon_server/app.py
 3. 重跑 `build-image.sh`。
 
 （本项留作后续优化，本轮默认联网构建。）
+
+### Bare-metal 模式：`conda activate bishon` 失败
+
+conda 找不到 `bishon` 环境，因为 `install.sh` 解压的 `python-env/` 未注册到 conda。手动注册：
+
+```bash
+sudo ln -sf /opt/bishon-home/python-env /opt/miniconda3/envs/bishon
+conda activate bishon
+```
+
+### Bare-metal 模式：`/api/health` 报 LLM/embedding 不健康
+
+检查 `.env` 是否被正确加载。Bare-metal 模式下 `start.sh` 从 `$HOST_DIR/.env` source 环境变量。验证：
+
+```bash
+# 确认 .env 存在且内容正确
+cat /opt/bishon-home/.env | grep API_BASE
+# 在 bishon conda env 内测试连通性
+conda activate bishon
+curl -sS -m 5 "$OPENAI_API_BASE/models" | head -c 200
+```
+
+### Bare-metal 模式：`import faiss` 报 `undefined symbol: cublasLtGetEnvironmentMode`
+
+`nvidia-cublas-cu12 >= 12.9` 的 `libcublas.so.12` 依赖 `libcublasLt.so.12` 中的符号，但动态链接器可能以错误顺序加载。`gpu_utils.py` 在 import 时自动 preload `libcublasLt`。如果仍报错，手动验证：
+
+```bash
+conda activate bishon
+python -c "from bishon_kernel.utils.gpu_utils import preload_cublaslt; preload_cublaslt(); import faiss; print('ok')"
+```
+
+### 重新安装时报 "cannot remove ... (permission denied)"
+
+Docker 容器以 root 运行后，`bishon/` 和 `python-env/` 下会有 root 拥有的 `__pycache__`。解决方法：
+
+```bash
+# 方法 1：chown 后重跑 install.sh
+sudo chown -R $(id -un):$(id -gn) /opt/bishon-home/bishon /opt/bishon-home/python-env
+bash install.sh --host-dir /opt/bishon-home ...
+
+# 方法 2：通过环境变量传递 sudo 密码
+BISHON_SUDO_PASS=<password> bash install.sh --host-dir /opt/bishon-home ...
+```
 
 ## 不在本文档范围
 
